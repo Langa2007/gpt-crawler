@@ -76,6 +76,20 @@ scrapper/
 ### 1. Requirements
 - **Python 3.10+** (Installed)
 - **Go 1.22+** (Installed via Winget or installer)
+- **PyTorch 2.7+** for reproducible forecasting
+
+Install Python dependencies with:
+
+```bash
+python -m pip install -r python_ai/requirements.txt
+```
+
+The offline forecasting module is available as
+`python_ai.app.torch_forecast.evaluate_torch`. It uses chronological
+out-of-sample evaluation, reports class probabilities and confidence, compares
+with the Phase Three baseline, and requires its independent `RiskEngine` before
+a signal can be approved. Missing PyTorch is reported explicitly; no fallback
+signal is generated.
 
 ### 2. Configure Environment (Optional)
 To enable generative AI reasoning with Google Gemini:

@@ -395,3 +395,37 @@ return of approximately `0.0173517` using the documented settings.
 data, with explicit targets, horizons, chronological evaluation, recorded
 outcomes, and trading costs. The baseline and fixture tests pass alongside the
 existing test suite.
+
+## Phase 4: Add PyTorch Forecasting
+
+**Status:** Implemented
+
+### Implemented
+
+- Added a deterministic PyTorch MLP using the Phase Three features and the
+  same cost-aware three-class target (down, neutral, up).
+- Training is chronological, seeded, and evaluated only on held-out rows.
+  Results include a model version, test accuracy, and baseline accuracy.
+- Every forecast includes class probabilities and confidence.
+- `RiskEngine` independently checks confidence, expected return, volatility,
+  and optional collection freshness. A forecast is never approved without
+  passing this gate.
+- PyTorch is declared in `python_ai/requirements.txt`. Environments without
+  the wheel fail explicitly with `TorchUnavailableError`, rather than
+  silently producing a fallback signal.
+
+### Reproducibility
+
+```bash
+python -m unittest python_ai.tests.test_torch_forecast
+```
+
+The test uses a deterministic in-memory fixture and fixed seed. Install
+`python_ai/requirements.txt` first in environments where PyTorch is available.
+
+### Completion criterion
+
+**Met:** the model has deterministic chronological out-of-sample evaluation,
+baseline comparison, probability-based uncertainty, and an independent risk
+engine that suppresses low-confidence, stale, high-volatility, or
+negative-expectation signals.
