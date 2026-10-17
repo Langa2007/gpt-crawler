@@ -2,11 +2,21 @@ import logging
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Any, Optional, TypedDict, TypeVar, cast
 
 import httpx
 
 from python_ai.app.config import settings
+from python_ai.app.data_collection import (
+    CollectionMetadata,
+    ProviderResponse,
+    SnapshotStore,
+    is_fresh,
+    normalize_symbol,
+    normalize_timestamp,
+    request_with_retries,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +210,12 @@ def _format_coin(coin: JsonObject) -> dict[str, Any]:
     }
 
 
+def _record_collection_error(provider: str, error: Exception) -> None:
+    message = f"{provider}: {error}"
+    _collection_errors.append(message)
+    logger.error("Data provider %s failed: %s", provider, error)
+
+
 def _harmonized_signal(analysis: dict[str, Any], direction: str) -> tuple[str, str]:
     score = float(analysis.get("score") or 0.0)
     if direction == "short":
@@ -292,8 +308,7 @@ def get_coin(query: str) -> Optional[dict[str, Any]]:
 
     def fetch() -> dict[str, Any]:
         with _client() as c:
-            r = c.get(
-                f"{COINGECKO_BASE}/coins/{coin_id}",
+            r = request_with_retries(c, "GET", f"{COINGECKO_BASE}/coins/{coin_id}",
                 params={
                     "localization": "false",
                     "tickers": "false",
@@ -308,15 +323,15 @@ def get_coin(query: str) -> Optional[dict[str, Any]]:
     try:
         return _cached(f"coin:{coin_id}", fetch)
     except Exception as e:
-        logger.error("CoinGecko get_coin error: %s", e)
+        _record_collection_error("coingecko_coin", e)
         return None
 
 
 def get_trending() -> list[dict[str, Any]]:
     def fetch() -> list[dict[str, Any]]:
         with _client() as c:
-            r = c.get(f"{COINGECKO_BASE}/search/trending")
-            r.raise_for_status()
+            r = request_with_retries(c, "GET", f"{COINGECKO_BASE}/search/trending",
+                                     attempts=settings.provider_retries)
             items = _as_json_list(_json_object(r).get("coins"))
             results: list[dict[str, Any]] = []
             for entry in items[:7]:
@@ -334,7 +349,7 @@ def get_trending() -> list[dict[str, Any]]:
     try:
         return _cached("trending", fetch)
     except Exception as e:
-        logger.error("CoinGecko get_trending error: %s", e)
+        _record_collection_error("coingecko_trending", e)
         return []
 
 
@@ -354,8 +369,8 @@ def get_market_overview(coins: Optional[list[str]] = None, limit: int = 10) -> l
 
     def fetch() -> list[dict[str, Any]]:
         with _client() as c:
-            r = c.get(f"{COINGECKO_BASE}/coins/markets", params=params)
-            r.raise_for_status()
+            r = request_with_retries(c, "GET", f"{COINGECKO_BASE}/coins/markets",
+                                     params=params, attempts=settings.provider_retries)
             results: list[dict[str, Any]] = []
             for item in _json_list(r):
                 change_24h = _number(item.get("price_change_percentage_24h"))
@@ -384,7 +399,7 @@ def get_market_overview(coins: Optional[list[str]] = None, limit: int = 10) -> l
         cache_key = f"market:{'|'.join(sorted(coins or []))}:{limit}"
         return _cached(cache_key, fetch)
     except Exception as e:
-        logger.error("CoinGecko get_market_overview error: %s", e)
+        _record_collection_error("coingecko_market", e)
         return []
 
 
@@ -395,8 +410,8 @@ def _load_coin_list() -> list[JsonObject]:
         return _coin_list_cache
     try:
         with _client() as c:
-            r = c.get(f"{COINGECKO_BASE}/coins/list")
-            r.raise_for_status()
+            r = request_with_retries(c, "GET", f"{COINGECKO_BASE}/coins/list",
+                                     attempts=settings.provider_retries)
             _coin_list_cache = _json_list(r)
             _coin_list_ts = now
     except Exception as e:
@@ -456,6 +471,16 @@ _FUTURES_CACHE_TTL = 60  # seconds
 _futures_cache: tuple[list[dict[str, Any]], float] | None = None
 _klines_cache: dict[str, tuple[dict[str, list[float]], float]] = {}
 _funding_cache: tuple[dict[str, float], float] | None = None
+_collection_errors: list[str] = []
+_last_collection_at: str | None = None
+_snapshot_store = SnapshotStore(settings.data_store_path)
+
+
+def collection_status() -> dict[str, Any]:
+    return {
+        "collected_at": _last_collection_at,
+        "errors": list(_collection_errors),
+    }
 
 
 def get_binance_futures_tickers() -> list[dict[str, Any]]:
@@ -467,12 +492,17 @@ def get_binance_futures_tickers() -> list[dict[str, Any]]:
         if now - ts < _FUTURES_CACHE_TTL:
             return data
 
+    global _last_collection_at  # noqa: PLW0603
+    _collection_errors.clear()
     try:
         with httpx.Client(timeout=5) as client:
-            resp = client.get(f"{BINANCE_FUTURES_BASE}/ticker/24hr")
-            resp.raise_for_status()
+            resp = request_with_retries(
+                client, "GET", f"{BINANCE_FUTURES_BASE}/ticker/24hr",
+                attempts=settings.provider_retries,
+            )
             raw = resp.json()
     except Exception as exc:  # noqa: BLE001
+        _collection_errors.append(f"binance_futures: {exc}")
         logger.warning("Binance futures ticker fetch failed: %s", exc)
         return []
 
@@ -480,24 +510,39 @@ def get_binance_futures_tickers() -> list[dict[str, Any]]:
     raw_list = cast(list[object], raw) if isinstance(raw, list) else []
     for item in raw_list:
         obj = _as_mapping(item)
-        symbol = _string(obj.get("symbol"))
+        symbol = normalize_symbol(obj.get("symbol"))
         if not symbol.endswith("USDT"):
             continue
         try:
+            source_timestamp = normalize_timestamp(obj.get("closeTime"))
             tickers.append(
                 {
                     "symbol": symbol,
-                    "base": symbol.replace("USDT", ""),
+                    "base": normalize_symbol(symbol.removesuffix("USDT")),
                     "price": float(_string(obj.get("lastPrice")) or "0"),
                     "change_pct": float(_string(obj.get("priceChangePercent")) or "0"),
                     "high_24h": float(_string(obj.get("highPrice")) or "0"),
                     "low_24h": float(_string(obj.get("lowPrice")) or "0"),
                     "volume_usdt": float(_string(obj.get("quoteVolume")) or "0"),
+                    "source_timestamp": source_timestamp,
+                    "stale": not is_fresh(source_timestamp, settings.data_freshness_sec)
+                    if source_timestamp
+                    else True,
                 }
             )
         except ValueError:
             continue
 
+    _last_collection_at = datetime.now(timezone.utc).isoformat()
+    response = ProviderResponse(
+        records=tickers,
+        metadata=CollectionMetadata(
+            provider="binance_futures",
+            collected_at=_last_collection_at,
+            source_timestamp=tickers[0].get("source_timestamp") if tickers else None,
+        ),
+    )
+    _snapshot_store.save(response)
     _futures_cache = (tickers, now)
     return tickers
 
@@ -509,8 +554,10 @@ def _get_funding_rates() -> dict[str, float]:
         return _funding_cache[0]
     try:
         with httpx.Client(timeout=4) as client:
-            response = client.get(f"{BINANCE_FUTURES_BASE}/premiumIndex")
-            response.raise_for_status()
+            response = request_with_retries(
+                client, "GET", f"{BINANCE_FUTURES_BASE}/premiumIndex",
+                attempts=settings.provider_retries,
+            )
             raw = response.json()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Binance funding fetch failed: %s", exc)
@@ -646,11 +693,11 @@ def _get_binance_klines(symbol: str) -> dict[str, list[float]]:
 
     try:
         with httpx.Client(timeout=4) as client:
-            response = client.get(
-                f"{BINANCE_FUTURES_BASE}/klines",
+            response = request_with_retries(
+                client, "GET", f"{BINANCE_FUTURES_BASE}/klines",
                 params={"symbol": symbol, "interval": "1h", "limit": 50},
+                attempts=settings.provider_retries,
             )
-            response.raise_for_status()
             raw = response.json()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Binance futures klines fetch failed for %s: %s", symbol, exc)

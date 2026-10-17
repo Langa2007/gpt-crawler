@@ -22,5 +22,8 @@ class Settings(BaseModel):
     coingecko_timeout_sec: float = float(os.getenv("COINGECKO_TIMEOUT_SEC", "10"))
     chat_history_max_turns: int = int(os.getenv("CHAT_HISTORY_MAX_TURNS", "20"))
     chat_session_ttl_min: int = int(os.getenv("CHAT_SESSION_TTL_MIN", "60"))
+    data_store_path: str = os.getenv("DATA_STORE_PATH", "data/collections.sqlite3")
+    provider_retries: int = int(os.getenv("PROVIDER_RETRIES", "3"))
+    data_freshness_sec: float = float(os.getenv("DATA_FRESHNESS_SEC", "300"))
 
 settings = Settings()

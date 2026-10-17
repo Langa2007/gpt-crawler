@@ -1,10 +1,12 @@
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
 from python_ai.app.config import settings
+from python_ai.app.data_collection import normalize_timestamp, request_with_retries
 
 try:
     from ddgs import DDGS  # pyright: ignore[reportUnknownVariableType, reportMissingImports]
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 class SearchEngine:
     def __init__(self) -> None:
         self.default_providers = self._provider_names(settings.search_providers)
+        self.last_errors: list[str] = []
+        self.last_collected_at: str | None = None
 
     def search_web(
         self, query: str, max_results: int = 5, providers: Optional[List[str]] = None
@@ -45,6 +49,8 @@ class SearchEngine:
             provider_names = ["duckduckgo"]
 
         collected: List[Dict[str, Any]] = []
+        self.last_errors = []
+        self.last_collected_at = datetime.now(timezone.utc).isoformat()
         for name in provider_names:
             try:
                 adapter = getattr(self, f"_search_{name}", None)
@@ -53,7 +59,9 @@ class SearchEngine:
                     continue
                 collected.extend(adapter(query, max_results, search_type, timelimit))
             except Exception as exc:
-                logger.warning("Search provider %s failed: %s", name, exc)
+                message = f"{name}: {exc}"
+                self.last_errors.append(message)
+                logger.error("Search provider %s failed: %s", name, exc)
         return self._deduplicate(collected, max_results)
 
     def _search_duckduckgo(
@@ -89,8 +97,7 @@ class SearchEngine:
         if timelimit:
             params["time_range"] = {"d": "day", "w": "week", "m": "month"}.get(timelimit, timelimit)
         with httpx.Client(timeout=settings.search_timeout_sec, headers={"User-Agent": settings.user_agent}) as client:
-            response = client.get(endpoint, params=params)
-            response.raise_for_status()
+            response = request_with_retries(client, "GET", endpoint, params=params, attempts=settings.provider_retries)
             payload = response.json()
         results: List[Dict[str, Any]] = []
         for item in payload.get("results", [])[:max_results]:
@@ -110,15 +117,17 @@ class SearchEngine:
         path = "news/search" if search_type == "news" else "web/search"
         headers = {"Accept": "application/json", "X-Subscription-Token": settings.brave_search_api_key}
         with httpx.Client(timeout=settings.search_timeout_sec, headers=headers) as client:
-            response = client.get(
-                f"https://api.search.brave.com/res/v1/{path}", params={"q": query, "count": min(max_results, 20)}
+            response = request_with_retries(
+                client, "GET", f"https://api.search.brave.com/res/v1/{path}",
+                params={"q": query, "count": min(max_results, 20)},
+                attempts=settings.provider_retries,
             )
-            response.raise_for_status()
             payload = response.json()
         records = payload.get("results", []) if search_type == "news" else payload.get("web", {}).get("results", [])
         return [{
             "title": item.get("title", ""), "url": item.get("url", ""),
-            "snippet": item.get("description", ""), "date": item.get("page_age", item.get("age", "")),
+            "snippet": item.get("description", ""),
+            "date": normalize_timestamp(item.get("page_age", item.get("age", ""))),
             "source": "brave", "image": "", "provider": "brave",
         } for item in records[:max_results]]
 
@@ -147,6 +156,10 @@ class SearchEngine:
                 continue
             seen.add(clean_url)
             item["url"] = clean_url
+            item["provider"] = str(item.get("provider") or "unknown")
+            item["collected_at"] = item.get("collected_at") or datetime.now(timezone.utc).isoformat()
+            if item.get("date"):
+                item["date"] = normalize_timestamp(item["date"]) or item["date"]
             results.append(item)
             if len(results) >= max_results:
                 break

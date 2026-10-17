@@ -87,6 +87,8 @@ def search_internet(req: SearchRequest) -> Dict[str, Any]:
         "count": len(results),
         "results": results,
         "providers": req.providers or search_engine.default_providers,
+        "collected_at": search_engine.last_collected_at,
+        "errors": search_engine.last_errors,
     }
 
 @app.post("/api/ai/clean-html")
@@ -102,7 +104,13 @@ def synthesize_answer(req: SynthesizeRequest) -> Dict[str, Any]:
 def get_news(req: NewsRequest) -> Dict[str, Any]:
     raw_news = search_engine.search_news(req.topic, max_results=req.limit, timelimit=req.timeframe)
     formatted = ai_synthesizer.format_news_feed(raw_news)
-    return {"topic": req.topic, "count": len(formatted), "articles": formatted}
+    return {
+        "topic": req.topic,
+        "count": len(formatted),
+        "articles": formatted,
+        "collected_at": search_engine.last_collected_at,
+        "errors": search_engine.last_errors,
+    }
 
 @app.post("/api/ai/chat")
 def chat(req: ChatRequest) -> Dict[str, Any]:
@@ -129,16 +137,16 @@ def get_crypto(req: CryptoRequest) -> Dict[str, Any]:
     data = crypto_module.get_coin(req.coin)
     if not data:
         raise HTTPException(status_code=404, detail=f"Coin '{req.coin}' not found on CoinGecko")
-    return data
+    return {**data, "collection": crypto_module.collection_status()}
 
 @app.get("/api/ai/crypto/trending")
 def get_trending_crypto() -> Dict[str, Any]:
-    return {"trending": crypto_module.get_trending()}
+    return {"trending": crypto_module.get_trending(), "collection": crypto_module.collection_status()}
 
 @app.post("/api/ai/crypto/market")
 def get_market(req: CryptoMarketRequest) -> Dict[str, Any]:
     data = crypto_module.get_market_overview(coins=req.coins, limit=req.limit)
-    return {"count": len(data), "coins": data}
+    return {"count": len(data), "coins": data, "collection": crypto_module.collection_status()}
 
 @app.get("/api/ai/crypto/futures-signals")
 def get_futures_signals(
@@ -149,7 +157,12 @@ def get_futures_signals(
     signals = crypto_module.get_futures_signals(
         strategy=strategy, min_volume=min_volume, limit=limit
     )
-    return {"count": len(signals), "strategy": strategy, "signals": signals}
+    return {
+        "count": len(signals),
+        "strategy": strategy,
+        "signals": signals,
+        "collection": crypto_module.collection_status(),
+    }
 
 if __name__ == "__main__":
     uvicorn.run("python_ai.app.main:app", host=settings.host, port=settings.port, reload=True)
