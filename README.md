@@ -293,3 +293,53 @@ Run its integration test with:
 ```bash
 go test ./examples/research-client
 ```
+
+## Go SDK
+
+The typed Go SDK covers every public API endpoint:
+
+- `Health`
+- `Research`
+- `News`
+- `Scrape`
+- `Crawl`
+- `Chat`
+- `Crypto`
+- `TrendingCrypto`
+- `CryptoMarket`
+- `FuturesSignals`
+
+Use it from another Go application:
+
+```go
+import (
+    "context"
+
+    "scrapper/sdk/go/scrapper"
+)
+
+client := scrapper.NewClient(
+    "http://localhost:8080",
+    os.Getenv("RESEARCH_API_KEY"),
+)
+
+result, err := client.Research(context.Background(), scrapper.QueryRequest{
+    Query:      "What are the latest developments in quantum computing?",
+    MaxResults: 5,
+})
+```
+
+The SDK provides:
+
+- Typed request and response structures
+- Context cancellation
+- Configurable HTTP clients and timeouts
+- API-key and research-scope headers
+- Typed `APIError` values for non-2xx responses
+- JSON decoding errors that identify the endpoint
+
+Run the SDK tests with:
+
+```bash
+go test ./sdk/go/scrapper
+```

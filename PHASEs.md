@@ -309,3 +309,18 @@ OK
 **Met:** a second application can call `/api/v1/query` without importing or
 duplicating the crawler, provider, extraction, or answer-generation
 implementation. Go validation passes with the research client and auth tests.
+
+### Endpoint readiness follow-up
+
+The shared interface has now been extended beyond research:
+
+- Added the typed Go SDK at `sdk/go/scrapper`.
+- Added typed client methods for health, research, news, scrape, crawl, chat,
+  single-coin, trending, market, and futures-signal APIs.
+- Added context cancellation, configurable HTTP clients, API-key headers, and
+  typed non-2xx errors.
+- Added SDK tests for authentication, typed decoding, API errors, and context
+  cancellation.
+
+The endpoint surface is now usable by another Go application without copying
+request construction or response parsing.
