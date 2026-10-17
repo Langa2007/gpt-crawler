@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from contextlib import closing
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -99,34 +100,36 @@ class SnapshotStore:
     def __init__(self, path: str) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS collection_snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    provider TEXT NOT NULL,
-                    collected_at TEXT NOT NULL,
-                    source_timestamp TEXT,
-                    records_json TEXT NOT NULL
+        with closing(sqlite3.connect(self.path)) as connection:
+            with connection:
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS collection_snapshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        provider TEXT NOT NULL,
+                        collected_at TEXT NOT NULL,
+                        source_timestamp TEXT,
+                        records_json TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
 
     def save(self, response: ProviderResponse) -> None:
-        with sqlite3.connect(self.path) as connection:
-            connection.execute(
-                "INSERT INTO collection_snapshots "
-                "(provider, collected_at, source_timestamp, records_json) VALUES (?, ?, ?, ?)",
-                (
-                    response.metadata.provider,
-                    response.metadata.collected_at,
-                    response.metadata.source_timestamp,
-                    json.dumps(response.records),
-                ),
-            )
+        with closing(sqlite3.connect(self.path)) as connection:
+            with connection:
+                connection.execute(
+                    "INSERT INTO collection_snapshots "
+                    "(provider, collected_at, source_timestamp, records_json) VALUES (?, ?, ?, ?)",
+                    (
+                        response.metadata.provider,
+                        response.metadata.collected_at,
+                        response.metadata.source_timestamp,
+                        json.dumps(response.records),
+                    ),
+                )
 
     def latest(self, provider: str) -> ProviderResponse | None:
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection:
             row = connection.execute(
                 "SELECT collected_at, source_timestamp, records_json "
                 "FROM collection_snapshots WHERE provider = ? "

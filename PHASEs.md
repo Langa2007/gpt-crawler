@@ -324,3 +324,74 @@ The shared interface has now been extended beyond research:
 
 The endpoint surface is now usable by another Go application without copying
 request construction or response parsing.
+
+## Phase 3: Develop Market Features and Baselines
+
+**Status:** Complete
+**Completion date:** 2026-10-17
+
+### Implemented
+
+1. **Defined forecasting targets**
+   - The baseline predicts the direction of the close-to-close return at the
+     selected horizon.
+   - A positive target is `+1`, a negative target is `-1`, and moves within
+     the configured round-trip cost are neutral (`0`).
+
+2. **Selected forecast horizons**
+   - The evaluator accepts an explicit bar horizon through `--horizon`.
+   - The default is one bar; tests cover a two-bar horizon.
+
+3. **Built feature-generation pipelines**
+   - Added `python_ai/app/market_baseline.py`.
+   - Features are generated chronologically from OHLCV bars:
+     one-bar return, lookback return, and rolling return volatility.
+   - Input timestamps are normalized to UTC and bars are sorted before any
+     feature or target is calculated.
+
+4. **Implemented a baseline forecast**
+   - The baseline is a transparent momentum/persistence rule: predict the sign
+     of the lookback return.
+   - It has no learned parameters and therefore is reproducible across runs.
+
+5. **Established chronological evaluation**
+   - Data is sorted by timestamp before splitting.
+   - The train/test boundary is chronological and controlled by
+     `--train-ratio`.
+   - Future bars are used only to calculate outcomes after a test prediction;
+     no future values are used as features.
+
+6. **Recorded predictions and eventual outcomes**
+   - Each prediction records symbol, timestamp, horizon, predicted direction,
+     target direction, gross return, net return, cost, and feature values.
+   - Predictions are persisted in SQLite with a recording timestamp.
+
+7. **Included relevant trading costs**
+   - `--cost-bps` subtracts round-trip costs from every predicted trade.
+   - Results include mean net return and compounded cumulative net return.
+
+### Reproducibility
+
+Run the checked-in historical fixture with:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python python_ai/scripts/run_baseline.py \
+  python_ai/tests/fixtures/btcusdt_sample.csv \
+  --symbol BTCUSDT \
+  --horizon 2 \
+  --lookback 3 \
+  --train-ratio 0.5 \
+  --cost-bps 10 \
+  --predictions-db data/baseline.sqlite3
+```
+
+The fixture contains 14 chronological BTCUSDT bars. The held-out evaluation
+has 4 training rows and 5 test predictions, with a reproducible mean net
+return of approximately `0.0173517` using the documented settings.
+
+### Completion criterion
+
+**Met:** reproducible baseline results are produced from held-out historical
+data, with explicit targets, horizons, chronological evaluation, recorded
+outcomes, and trading costs. The baseline and fixture tests pass alongside the
+existing test suite.
