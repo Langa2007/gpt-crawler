@@ -70,12 +70,22 @@ type NewsResponse struct {
 }
 
 type QueryResponse struct {
-	Query      string           `json:"query"`
-	Answer     string           `json:"answer"`
-	Sources    []map[string]any `json:"sources"`
-	Confidence string           `json:"confidence"`
-	DurationMs int64            `json:"duration_ms"`
-	Providers  []string         `json:"providers,omitempty"`
+	Query      string          `json:"query"`
+	Answer     string          `json:"answer"`
+	Sources    []SourceSummary `json:"sources"`
+	Confidence string          `json:"confidence"`
+	DurationMs int64           `json:"duration_ms"`
+	Providers  []string        `json:"providers,omitempty"`
+	Errors     []string        `json:"errors,omitempty"`
+}
+
+type SourceSummary struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Summary     string `json:"summary,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	CollectedAt string `json:"collected_at,omitempty"`
 }
 
 type ChatRequest struct {

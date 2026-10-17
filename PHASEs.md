@@ -196,7 +196,7 @@ Phase Zero is complete when:
 
 ## Phase 1: Stabilize Data Collection
 
-**Status:** Complete  
+**Status:** Complete
 **Completion date:** 2026-10-17
 
 ### Implemented
@@ -259,3 +259,53 @@ passes with 14 tests:
 Ran 14 tests in 0.016s
 OK
 ```
+
+## Phase 2: Build the Shared Research Interface
+
+**Status:** Complete
+**Completion date:** 2026-10-17
+
+### Implemented
+
+1. **Separated the research stages**
+   - Added `internal/research.Service` with explicit `Retriever`, `Scraper`,
+     and `Answerer` interfaces.
+   - The HTTP handler now delegates orchestration instead of mixing retrieval,
+     scraping, fallback extraction, and answer generation.
+
+2. **Added source-backed summaries**
+   - Source responses now use typed `SourceSummary` records.
+   - Each source includes an ID, title, URL, summary, provider, and collection
+     timestamp where available.
+   - The answer prompt and heuristic fallback both retain source citations.
+
+3. **Supported general question answering**
+   - `/api/v1/query` remains provider-independent and accepts arbitrary
+     questions.
+   - The same pipeline handles search, safe collection, extraction, and
+     synthesis for general research questions.
+
+4. **Defined stable request and response schemas**
+   - The Go gateway now exposes typed query and source structures rather than
+     untyped source maps.
+   - The README documents the request, response, citation, and error contract.
+
+5. **Added authentication and permissions**
+   - Query and news routes support scoped API keys through
+     `RESEARCH_API_KEYS`.
+   - Clients send `X-API-Key` and `X-API-Scope: research`.
+   - Missing or invalid credentials return `401 Unauthorized`.
+   - Authentication remains disabled when no keys are configured for local
+     development.
+
+6. **Tested a second application**
+   - `examples/research-client` is an independent Go client using only the
+     HTTP contract.
+   - Its integration test verifies credentials, stable decoding, and
+     source-backed summaries.
+
+### Completion criterion
+
+**Met:** a second application can call `/api/v1/query` without importing or
+duplicating the crawler, provider, extraction, or answer-generation
+implementation. Go validation passes with the research client and auth tests.

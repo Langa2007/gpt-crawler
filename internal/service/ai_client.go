@@ -10,11 +10,47 @@ import (
 	"time"
 
 	"scrapper/internal/crawler"
+	"scrapper/internal/research"
 )
 
 type AIClient struct {
 	baseURL    string
 	httpClient *http.Client
+}
+
+func (c *AIClient) Retrieve(ctx context.Context, query string, maxResults int, providers []string) ([]map[string]any, error) {
+	return c.SearchInternet(ctx, query, maxResults, "web", providers)
+}
+
+func (c *AIClient) Answer(ctx context.Context, query string, docs []crawler.ScrapeResult) (research.Answer, error) {
+	response, err := c.SynthesizeAnswer(ctx, query, docs)
+	if err != nil {
+		return research.Answer{}, err
+	}
+	answer, _ := response["answer"].(string)
+	confidence, _ := response["confidence"].(string)
+	var sources []crawler.SourceSummary
+	if raw, ok := response["sources"].([]any); ok {
+		for _, item := range raw {
+			if source, ok := item.(map[string]any); ok {
+				sources = append(sources, sourceSummary(source))
+			}
+		}
+	}
+	return research.Answer{Text: answer, Confidence: confidence, Sources: sources}, nil
+}
+
+func sourceSummary(source map[string]any) crawler.SourceSummary {
+	summary, _ := source["summary"].(string)
+	provider, _ := source["provider"].(string)
+	collectedAt, _ := source["collected_at"].(string)
+	id, _ := source["id"].(float64)
+	return crawler.SourceSummary{ID: int(id), Title: stringValue(source["title"]), URL: stringValue(source["url"]), Summary: summary, Provider: provider, CollectedAt: collectedAt}
+}
+
+func stringValue(value any) string {
+	result, _ := value.(string)
+	return result
 }
 
 func NewAIClient(baseURL string) *AIClient {
@@ -107,10 +143,12 @@ func (c *AIClient) SynthesizeAnswer(ctx context.Context, query string, docs []cr
 	var docItems []map[string]any
 	for _, d := range docs {
 		docItems = append(docItems, map[string]any{
-			"title":   d.Title,
-			"url":     d.URL,
-			"text":    d.CleanText,
-			"snippet": d.Description,
+			"title":        d.Title,
+			"url":          d.URL,
+			"text":         d.CleanText,
+			"snippet":      d.Description,
+			"provider":     d.Metadata["provider"],
+			"collected_at": d.Metadata["collected_at"],
 		})
 	}
 

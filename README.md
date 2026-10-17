@@ -107,6 +107,58 @@ go run ./cmd/scraper-server
 
 ## API Endpoints (Port 8080)
 
+### Research interface
+
+The research interface separates retrieval, public-page scraping, content
+extraction, and answer generation behind one stable endpoint. A client only
+needs to send a question; it does not need to duplicate provider selection,
+crawler safety, extraction, or citation logic.
+
+`POST /api/v1/query`
+
+Request:
+
+```json
+{
+  "query": "What are the latest developments in quantum computing?",
+  "max_results": 5,
+  "providers": ["duckduckgo"]
+}
+```
+
+Response:
+
+```json
+{
+  "query": "What are the latest developments in quantum computing?",
+  "answer": "Synthesized answer with citations [1], [2].",
+  "confidence": "high",
+  "providers": ["duckduckgo"],
+  "duration_ms": 1420,
+  "sources": [
+    {
+      "id": 1,
+      "title": "Source 1",
+      "url": "https://example.com/article",
+      "summary": "Evidence used for the answer.",
+      "provider": "duckduckgo",
+      "collected_at": "2026-10-17T09:00:00+00:00"
+    }
+  ],
+  "errors": []
+}
+```
+
+`sources` is source-backed: every citation identifies the URL and includes the
+summary supplied to answer generation. `errors` is present when one or more
+providers fail, so clients can distinguish partial collection from a clean
+result.
+
+When `RESEARCH_API_KEYS` is configured, query and news requests require
+`X-API-Key` and `X-API-Scope: research` headers. Configure keys as
+`key:scope1|scope2,key2`. With no configured keys, local development remains
+open.
+
 ### 1. News Extraction (For **Dira News** Integration)
 Fetch structured news articles on any topic, ready to be ingested into Dira News.
 
@@ -220,4 +272,24 @@ const response = await fetch('http://localhost:8080/api/v1/query', {
 });
 const data = await response.json();
 console.log(data.answer, data.sources);
+```
+
+## Using the research interface from another application
+
+The repository includes a small independent Go client in
+`examples/research-client`. It consumes only the HTTP contract and does not
+import crawler, provider, or AI implementation packages:
+
+```go
+result, err := researchclient.Ask(
+    "http://localhost:8080",
+    os.Getenv("RESEARCH_API_KEY"),
+    "What are the latest developments in quantum computing?",
+)
+```
+
+Run its integration test with:
+
+```bash
+go test ./examples/research-client
 ```

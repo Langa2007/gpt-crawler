@@ -35,7 +35,15 @@ class AISynthesizer:
             title = doc.get("title", f"Source {idx}")
             url = doc.get("url", "")
             text = doc.get("text", doc.get("snippet", ""))[:2500]
-            sources.append({"id": idx, "title": title, "url": url})
+            summary = doc.get("snippet") or text[:280]
+            sources.append({
+                "id": idx,
+                "title": title,
+                "url": url,
+                "summary": summary,
+                "provider": doc.get("provider", ""),
+                "collected_at": doc.get("collected_at", ""),
+            })
             context_parts.append(f"--- SOURCE [{idx}]: {title} ({url}) ---\n{text}\n")
 
         context_text = "\n".join(context_parts)

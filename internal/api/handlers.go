@@ -8,18 +8,21 @@ import (
 	"time"
 
 	"scrapper/internal/crawler"
+	"scrapper/internal/research"
 	"scrapper/internal/service"
 )
 
 type Handler struct {
 	engine   *crawler.Engine
 	aiClient *service.AIClient
+	research *research.Service
 }
 
 func NewHandler(engine *crawler.Engine, aiClient *service.AIClient) *Handler {
 	return &Handler{
 		engine:   engine,
 		aiClient: aiClient,
+		research: research.NewService(aiClient, engine, aiClient),
 	}
 }
 
@@ -123,72 +126,20 @@ func (h *Handler) QueryInternet(w http.ResponseWriter, r *http.Request) {
 		maxResults = 10
 	}
 
-	searchResults, err := h.aiClient.SearchInternet(r.Context(), req.Query, maxResults, "web", req.Providers)
+	answer, err := h.research.Research(r.Context(), req.Query, maxResults, req.Providers)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to search internet: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "research failed: "+err.Error())
 		return
-	}
-
-	if len(searchResults) == 0 {
-		writeJSON(w, http.StatusOK, crawler.QueryResponse{
-			Query:      req.Query,
-			Answer:     "No search results found for the given query.",
-			Sources:    []map[string]any{},
-			Confidence: "none",
-			DurationMs: time.Since(start).Milliseconds(),
-			Providers:  req.Providers,
-		})
-		return
-	}
-
-	var urls []string
-	for _, sr := range searchResults {
-		if u, ok := sr["url"].(string); ok && u != "" {
-			urls = append(urls, u)
-		}
-	}
-
-	scraped := h.engine.ScrapeBatch(r.Context(), urls, 5)
-
-	var validDocs []crawler.ScrapeResult
-	for i, doc := range scraped {
-		if doc.Error == "" && doc.CleanText != "" {
-			validDocs = append(validDocs, doc)
-		} else if i < len(searchResults) {
-			snippet, _ := searchResults[i]["snippet"].(string)
-			title, _ := searchResults[i]["title"].(string)
-			validDocs = append(validDocs, crawler.ScrapeResult{
-				URL:       urls[i],
-				Title:     title,
-				CleanText: snippet,
-			})
-		}
-	}
-
-	aiResp, err := h.aiClient.SynthesizeAnswer(r.Context(), req.Query, validDocs)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "ai synthesis failed: "+err.Error())
-		return
-	}
-
-	answer, _ := aiResp["answer"].(string)
-	confidence, _ := aiResp["confidence"].(string)
-	rawSources, _ := aiResp["sources"].([]any)
-
-	var sources []map[string]any
-	for _, s := range rawSources {
-		if m, ok := s.(map[string]any); ok {
-			sources = append(sources, m)
-		}
 	}
 
 	writeJSON(w, http.StatusOK, crawler.QueryResponse{
 		Query:      req.Query,
-		Answer:     answer,
-		Sources:    sources,
-		Confidence: confidence,
+		Answer:     answer.Text,
+		Sources:    answer.Sources,
+		Confidence: answer.Confidence,
 		DurationMs: time.Since(start).Milliseconds(),
 		Providers:  req.Providers,
+		Errors:     answer.Errors,
 	})
 }
 
