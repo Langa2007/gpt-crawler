@@ -11,6 +11,7 @@ from python_ai.app.extractor import content_extractor
 from python_ai.app.ai_synthesizer import ai_synthesizer
 from python_ai.app import chatbot as chatbot_module
 from python_ai.app import crypto as crypto_module
+from python_ai.app.sentiment import extract_claims, save_claims
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -65,6 +66,12 @@ class CryptoMarketRequest(BaseModel):
     coins: Optional[List[str]] = None
     limit: int = 10
 
+class SentimentRequest(BaseModel):
+    topic: str
+    limit: int = 20
+    timeframe: Optional[str] = "w"
+    symbols: List[str] = []
+
 @app.get("/health")
 def health_check() -> Dict[str, Any]:
     return {
@@ -108,6 +115,19 @@ def get_news(req: NewsRequest) -> Dict[str, Any]:
         "topic": req.topic,
         "count": len(formatted),
         "articles": formatted,
+        "collected_at": search_engine.last_collected_at,
+        "errors": search_engine.last_errors,
+    }
+
+@app.post("/api/ai/market-sentiment")
+def get_market_sentiment(req: SentimentRequest) -> Dict[str, Any]:
+    raw_news = search_engine.search_news(req.topic, max_results=req.limit, timelimit=req.timeframe)
+    claims = extract_claims(raw_news, retrieved_at=search_engine.last_collected_at, symbols=req.symbols)
+    save_claims(settings.data_store_path, claims)
+    return {
+        "topic": req.topic,
+        "count": len(claims),
+        "claims": [claim.__dict__ for claim in claims],
         "collected_at": search_engine.last_collected_at,
         "errors": search_engine.last_errors,
     }

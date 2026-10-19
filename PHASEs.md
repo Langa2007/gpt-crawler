@@ -414,6 +414,32 @@ existing test suite.
   the wheel fail explicitly with `TorchUnavailableError`, rather than
   silently producing a fallback signal.
 
+## Phase 5: Integrate News Sentiment
+
+**Status:** Implemented
+
+### Implemented
+
+- Added point-in-time market claims for permitted prediction-market,
+  exchange, CoinGecko, and trading-news domains.
+- Claims retain normalized publication and retrieval timestamps, source URL,
+  event type, matched symbols, relevance, and deterministic lexicon sentiment.
+- Added SQLite persistence through `market_sentiment_claims` and the
+  `/api/ai/market-sentiment` endpoint.
+- Sentiment features are aligned only when both publication and retrieval
+  timestamps are no later than the market bar. A half-life decay prevents old
+  claims from dominating newer observations.
+- Added an out-of-sample value test that compares cost-aware sentiment
+  predictions with the existing chronological market baseline. `retained` is
+  true only when both mean net return and accuracy improve; otherwise the
+  feature must be discarded.
+
+### Completion criterion
+
+**Met:** sentiment is a retained feature only when the held-out value test
+reports `retained=True`; future publications and late retrievals are excluded
+by construction.
+
 ### Reproducibility
 
 ```bash

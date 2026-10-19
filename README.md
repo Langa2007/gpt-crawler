@@ -91,6 +91,15 @@ with the Phase Three baseline, and requires its independent `RiskEngine` before
 a signal can be approved. Missing PyTorch is reported explicitly; no fallback
 signal is generated.
 
+Market sentiment is collected by the Python service at
+`POST /api/ai/market-sentiment`. It accepts `topic`, `limit`, `timeframe`, and
+optional `symbols`, then stores permitted prediction-market, exchange,
+CoinGecko, and trading-news claims in the configured SQLite data store. Each
+claim includes both `published_at` and `retrieved_at`. Historical alignment
+rejects claims that were not available by the bar timestamp, and
+`evaluate_sentiment_value` retains the feature only when held-out,
+cost-aware mean return and accuracy both improve over the market baseline.
+
 ### 2. Configure Environment (Optional)
 To enable generative AI reasoning with Google Gemini:
 Edit `.env`:
