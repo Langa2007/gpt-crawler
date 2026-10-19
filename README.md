@@ -182,6 +182,11 @@ systems. The Python service on port 5000 is for internal API calls.
 
 ### Using the Go SDK
 
+The API is language independent. Its complete REST contract is in
+[OpenAPI format](sdk/openapi.yaml), which can be imported into client
+generators for other languages or used directly with any HTTP library. See
+[SDK and API contract guide](sdk/README.md).
+
 Other Go projects can import the typed client:
 
 ```bash

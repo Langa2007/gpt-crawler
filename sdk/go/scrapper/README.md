@@ -2,6 +2,7 @@
 
 Typed Go client for the Scrapper API. It uses the Go standard library and
 supports contexts, custom `http.Client` values, and structured API errors.
+For clients in other languages, see the [language-neutral OpenAPI contract](../../openapi.yaml).
 
 ## Install
 

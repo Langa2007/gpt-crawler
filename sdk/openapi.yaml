@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: Scrapper API
+  version: 1.0.0
+  description: >-
+    Language-neutral contract for the Scrapper HTTP API. Use this document to
+    call the REST API directly or generate a client in a language of your choice.
+servers:
+  - url: http://localhost:8080
+    description: Local Go API gateway
+tags:
+  - name: System
+  - name: Research
+  - name: Scraping
+  - name: Chat
+  - name: Crypto
+paths:
+  /api/v1/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Check API and Python service health
+      responses:
+        '200':
+          description: Gateway health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/v1/query:
+    post:
+      tags: [Research]
+      operationId: researchQuery
+      summary: Search the web and synthesize an answer with sources
+      description: >-
+        If RESEARCH_API_KEYS is configured on the server, provide X-API-Key and
+        X-API-Scope: research. Authentication is optional when the server has
+        no research keys configured.
+      security:
+        - {}
+        - ResearchApiKey: []
+          ResearchScope: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Synthesized answer and source list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/news:
+    post:
+      tags: [Research]
+      operationId: getNews
+      summary: Fetch news articles for a topic
+      description: >-
+        If RESEARCH_API_KEYS is configured on the server, provide X-API-Key and
+        X-API-Scope: research. Authentication is optional when the server has
+        no research keys configured.
+      security:
+        - {}
+        - ResearchApiKey: []
+          ResearchScope: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewsRequest'
+      responses:
+        '200':
+          description: News articles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/scrape:
+    post:
+      tags: [Scraping]
+      operationId: scrapeUrls
+      summary: Scrape a batch of URLs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrapeRequest'
+      responses:
+        '200':
+          description: Scrape results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/v1/crawl:
+    post:
+      tags: [Scraping]
+      operationId: crawlSite
+      summary: Crawl pages starting from a URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrawlRequest'
+      responses:
+        '200':
+          description: Crawl results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrawlResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/v1/chat:
+    post:
+      tags: [Chat]
+      operationId: sendChatMessage
+      summary: Send a message to the chatbot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Chat response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/crypto:
+    post:
+      tags: [Crypto]
+      operationId: getCryptoAsset
+      summary: Get a crypto asset summary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CryptoRequest'
+      responses:
+        '200':
+          description: Crypto asset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CryptoAsset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/crypto/trending:
+    get:
+      tags: [Crypto]
+      operationId: getTrendingCrypto
+      summary: Get trending crypto assets
+      responses:
+        '200':
+          description: Trending assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendingResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/crypto/market:
+    post:
+      tags: [Crypto]
+      operationId: getCryptoMarket
+      summary: Get market data for selected coins
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CryptoMarketRequest'
+      responses:
+        '200':
+          description: Market data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CryptoMarketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/v1/crypto/futures-signals:
+    get:
+      tags: [Crypto]
+      operationId: getFuturesSignals
+      summary: Get futures trading signals
+      parameters:
+        - name: strategy
+          in: query
+          description: Signal strategy
+          schema:
+            type: string
+            default: short
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+        - name: min_volume
+          in: query
+          description: Minimum 24-hour volume in USDT
+          schema:
+            type: number
+            format: double
+            minimum: 0
+            exclusiveMinimum: true
+            default: 15000000
+      responses:
+        '200':
+          description: Futures signals
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FuturesSignalsResponse'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  securitySchemes:
+    ResearchApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: "Pair with X-API-Scope: research for research and news endpoints."
+    ResearchScope:
+      type: apiKey
+      in: header
+      name: X-API-Scope
+      description: Use the value research with ResearchApiKey.
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+    Unauthorized:
+      description: Missing or invalid research API credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+    NotFound:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+    ServerError:
+      description: The server could not complete the request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIError'
+  schemas:
+    APIError:
+      type: object
+      required: [error, status]
+      properties:
+        error:
+          type: string
+        status:
+          type: integer
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string }
+        service: { type: string }
+        timestamp: { type: string, format: date-time }
+        python_service: { type: string }
+        python_info:
+          type: object
+          additionalProperties: true
+    QueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1 }
+        max_results: { type: integer, minimum: 1, maximum: 10, default: 5 }
+        providers:
+          type: array
+          items: { type: string }
+    QueryResponse:
+      type: object
+      properties:
+        query: { type: string }
+        answer: { type: string }
+        confidence: { type: string }
+        duration_ms: { type: integer, format: int64 }
+        providers:
+          type: array
+          items: { type: string }
+        errors:
+          type: array
+          items: { type: string }
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+    Source:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        url: { type: string, format: uri }
+        summary: { type: string }
+        provider: { type: string }
+        collected_at: { type: string }
+    NewsRequest:
+      type: object
+      required: [topic]
+      properties:
+        topic: { type: string, minLength: 1 }
+        limit: { type: integer, minimum: 1, maximum: 25, default: 10 }
+        timeframe:
+          type: string
+          description: Search timeframe, commonly d (day), w (week), or m (month).
+          default: w
+    NewsResponse:
+      type: object
+      properties:
+        topic: { type: string }
+        count: { type: integer }
+        collected_at: { type: string }
+        errors:
+          type: array
+          items: { type: string }
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/NewsArticle'
+    NewsArticle:
+      type: object
+      properties:
+        title: { type: string }
+        url: { type: string, format: uri }
+        summary: { type: string }
+        author: { type: string }
+        published_date: { type: string }
+        source: { type: string }
+        image: { type: string, format: uri }
+    ScrapeRequest:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          minItems: 1
+          items: { type: string, format: uri }
+        concurrency: { type: integer, minimum: 1, default: 5 }
+        timeout_sec: { type: integer, minimum: 1, maximum: 60 }
+    ScrapeResponse:
+      type: object
+      properties:
+        count: { type: integer }
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScrapeResult'
+    CrawlRequest:
+      type: object
+      required: [start_url]
+      properties:
+        start_url: { type: string, format: uri }
+        max_pages: { type: integer, minimum: 1 }
+        max_depth: { type: integer, minimum: 0 }
+        concurrency: { type: integer, minimum: 1 }
+        allow_subdomains: { type: boolean, default: false }
+    CrawlResponse:
+      type: object
+      properties:
+        start_url: { type: string, format: uri }
+        count: { type: integer }
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScrapeResult'
+    ScrapeResult:
+      type: object
+      properties:
+        url: { type: string, format: uri }
+        final_url: { type: string, format: uri }
+        status_code: { type: integer }
+        title: { type: string }
+        clean_text: { type: string }
+        description: { type: string }
+        content_type: { type: string }
+        links:
+          type: array
+          items: { type: string, format: uri }
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+        duration_ms: { type: integer, format: int64 }
+        error: { type: string }
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, minLength: 1 }
+        session_id: { type: string, default: default }
+        mode: { type: string, default: general }
+        site_context: { type: string }
+    ChatResponse:
+      type: object
+      properties:
+        reply: { type: string }
+        session_id: { type: string }
+        mode: { type: string }
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        history_length: { type: integer }
+    CryptoRequest:
+      type: object
+      required: [coin]
+      properties:
+        coin: { type: string, minLength: 1 }
+    CryptoAsset:
+      type: object
+      description: Crypto summary fields vary by upstream market data provider.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        symbol: { type: string }
+        price_usd: { type: number, format: double }
+        change_24h_pct: { type: number, format: double }
+        signal: { type: string }
+        signal_color: { type: string }
+        momentum_score: { type: number, format: double }
+        collection:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+    CryptoMarketRequest:
+      type: object
+      properties:
+        coins:
+          type: array
+          items: { type: string }
+        limit: { type: integer, minimum: 1, default: 10 }
+    CryptoMarketResponse:
+      type: object
+      properties:
+        count: { type: integer }
+        coins:
+          type: array
+          items:
+            $ref: '#/components/schemas/CryptoAsset'
+        collection:
+          type: object
+          additionalProperties: true
+    TrendingResponse:
+      type: object
+      properties:
+        trending:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        collection:
+          type: object
+          additionalProperties: true
+    FuturesSignalsResponse:
+      type: object
+      properties:
+        count: { type: integer }
+        strategy: { type: string }
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/FuturesSignal'
+        collection:
+          type: object
+          additionalProperties: true
+    FuturesSignal:
+      type: object
+      properties:
+        symbol: { type: string }
+        base: { type: string }
+        direction: { type: string }
+        price: { type: number, format: double }
+        change_pct: { type: number, format: double }
+        volume_usdt: { type: number, format: double }
+        high_24h: { type: number, format: double }
+        low_24h: { type: number, format: double }
+        position_in_range: { type: number, format: double }
+        score: { type: number, format: double }
+        confirmation_score: { type: number, format: double }
+        confidence_pct: { type: number, format: double }
+        signal_status: { type: string }
+        entry_live: { type: boolean }
+        risk_warning: { type: string }
+        entry: { type: number, format: double }
+        sl: { type: number, format: double }
+        tp1: { type: number, format: double }
+        tp2: { type: number, format: double }
+        tp3: { type: number, format: double }
+        leverage: { type: integer }
+        rr: { type: number, format: double }
+        risk_pct: { type: number, format: double }
