@@ -180,6 +180,29 @@ systems. The Python service on port 5000 is for internal API calls.
 
 ## API Endpoints (Port 8080)
 
+### Using the Go SDK
+
+Other Go projects can import the typed client:
+
+```bash
+go get github.com/Langa2007/scrapper/sdk/go/scrapper
+```
+
+Create a client with the API gateway URL, then call its methods with a
+`context.Context`. For example:
+
+```go
+client := scrapper.NewClient("http://localhost:8080", "")
+result, err := client.Research(ctx, scrapper.QueryRequest{
+    Query: "Recent developments in renewable energy",
+})
+```
+
+The SDK includes methods for health checks, research, news, scraping, crawling,
+chat, and crypto endpoints. See [the Go SDK guide](sdk/go/scrapper/README.md)
+for authentication, response types, and full usage details. The SDK sends
+requests to the Go gateway on port 8080; port 5000 is the internal Python API.
+
 ### Research interface
 
 The research interface separates retrieval, public-page scraping, content
