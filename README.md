@@ -61,7 +61,8 @@ scrapper/
 │   ├── requirements.txt            # Python dependencies
 │   └── .venv/                      # Python virtual environment
 ├── scripts/
-│   ├── start.ps1                   # One-click startup script
+│   ├── start.ps1                   # Windows startup script
+│   ├── start.sh                    # Linux startup script
 │   └── test_api.ps1                # Integration test script
 ├── .env.example                    # Environment template
 ├── .env                            # Local configuration
@@ -74,15 +75,29 @@ scrapper/
 ## Quickstart Guide
 
 ### 1. Requirements
-- **Python 3.10+** (Installed)
-- **Go 1.22+** (Installed via Winget or installer)
+- **Python 3.10+**
+- **Go 1.22+**
 - **PyTorch 2.7+** for reproducible forecasting
 
-Install Python dependencies with:
+On Linux, install Python 3, its virtual environment support, and Go using your
+distribution's package manager. For example, on Debian or Ubuntu:
 
 ```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-pip golang-go
+```
+
+Create a project virtual environment and install the Python dependencies:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
 python -m pip install -r python_ai/requirements.txt
 ```
+
+The startup script also uses `.venv/bin/python` if it exists. If you prefer a
+system Python installation, install the requirements with `python3 -m pip` and
+ensure `python3` is available on your `PATH`.
 
 The offline forecasting module is available as
 `python_ai.app.torch_forecast.evaluate_torch`. It uses chronological
@@ -109,12 +124,44 @@ GEMINI_API_KEY="your-gemini-api-key-here"
 *(If no API key is provided, the scraper operates using its built-in heuristic extraction algorithms).*
 
 ### 3. Run the Bot
+
+#### Linux
+
+From the project root, run:
+
+```bash
+./scripts/start.sh
+```
+
+If the script is not executable, run `chmod +x scripts/start.sh` once, then
+run it again. It starts the Python AI service on port 5000 and the Go server,
+which serves the frontend and API on port 8080. Open
+<http://localhost:8080> in your browser. Port 5000 is an internal Python API;
+opening it in a browser does not show the frontend.
+
+To start the services manually, use two terminals from the project root.
+
+**Terminal 1 (Python AI Microservice):**
+
+```bash
+. .venv/bin/activate
+python -m uvicorn python_ai.app.main:app --host 127.0.0.1 --port 5000
+```
+
+**Terminal 2 (Go Gateway and frontend):**
+
+```bash
+go run ./cmd/scraper-server
+```
+
+#### Windows
+
 Run the startup script in PowerShell:
 ```powershell
 .\scripts\start.ps1
 ```
 
-Or start the two services manually in separate terminals:
+Or start the two services manually in separate terminals from the project root:
 **Terminal 1 (Python AI Microservice):**
 ```powershell
 cd python_ai
@@ -125,6 +172,9 @@ cd python_ai
 ```powershell
 go run ./cmd/scraper-server
 ```
+
+The Go server serves the frontend at <http://localhost:8080> on both operating
+systems. The Python service on port 5000 is for internal API calls.
 
 ---
 
