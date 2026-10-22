@@ -9,6 +9,7 @@ from python_ai.app.config import settings
 from python_ai.app.searcher import search_engine
 from python_ai.app.extractor import content_extractor
 from python_ai.app.ai_synthesizer import ai_synthesizer
+from python_ai.app.providers.registry import registry
 from python_ai.app import chatbot as chatbot_module
 from python_ai.app import crypto as crypto_module
 from python_ai.app.sentiment import extract_claims, save_claims
@@ -44,6 +45,8 @@ class DocumentItem(BaseModel):
 class SynthesizeRequest(BaseModel):
     query: str
     documents: List[DocumentItem]
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 class NewsRequest(BaseModel):
     topic: str
@@ -55,6 +58,8 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
     mode: str = "general"
     site_context: Optional[str] = ""
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 class ClearSessionRequest(BaseModel):
     session_id: str
@@ -74,12 +79,20 @@ class SentimentRequest(BaseModel):
 
 @app.get("/health")
 def health_check() -> Dict[str, Any]:
+    active_prov = registry.get_active_provider_name()
+    providers_info = registry.list_providers()
     return {
         "status": "healthy",
         "service": "python_ai",
-        "version": "0.2.0",
-        "gemini_configured": bool(settings.gemini_api_key),
-        "openai_configured": bool(settings.openai_api_key),
+        "version": "0.3.0",
+        "active_provider": active_prov,
+        "providers": providers_info,
+        "gemini_configured": providers_info.get("gemini", {}).get("configured", False),
+        "openai_configured": providers_info.get("openai", {}).get("configured", False),
+        "claude_configured": providers_info.get("claude", {}).get("configured", False),
+        "kimi_configured": providers_info.get("kimi", {}).get("configured", False),
+        "qwen_configured": providers_info.get("qwen", {}).get("configured", False),
+        "custom_configured": providers_info.get("custom", {}).get("configured", False),
     }
 
 @app.post("/api/ai/search")
@@ -105,7 +118,12 @@ def clean_html(req: CleanHtmlRequest) -> Dict[str, Any]:
 @app.post("/api/ai/synthesize")
 def synthesize_answer(req: SynthesizeRequest) -> Dict[str, Any]:
     doc_dicts = [doc.model_dump() for doc in req.documents]
-    return ai_synthesizer.synthesize_answer(req.query, doc_dicts)
+    return ai_synthesizer.synthesize_answer(
+        req.query,
+        doc_dicts,
+        provider=req.provider,
+        model=req.model,
+    )
 
 @app.post("/api/ai/news")
 def get_news(req: NewsRequest) -> Dict[str, Any]:
@@ -141,6 +159,8 @@ def chat(req: ChatRequest) -> Dict[str, Any]:
         session_id=req.session_id,
         mode=req.mode,
         site_context=req.site_context or "",
+        provider=req.provider,
+        model=req.model,
     )
 
 @app.get("/api/ai/chat/history/{session_id}")

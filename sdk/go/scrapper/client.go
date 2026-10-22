@@ -135,9 +135,11 @@ type NewsArticle struct {
 }
 
 type NewsResponse struct {
-	Topic    string        `json:"topic"`
-	Count    int           `json:"count"`
-	Articles []NewsArticle `json:"articles"`
+	Topic       string        `json:"topic"`
+	Count       int           `json:"count"`
+	CollectedAt string        `json:"collected_at,omitempty"`
+	Errors      []string      `json:"errors,omitempty"`
+	Articles    []NewsArticle `json:"articles"`
 }
 
 type ChatRequest struct {

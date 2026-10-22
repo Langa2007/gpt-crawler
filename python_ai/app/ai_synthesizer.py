@@ -1,32 +1,27 @@
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
 from python_ai.app.config import settings
+from python_ai.app.providers.registry import registry
 
 logger = logging.getLogger(__name__)
 
+
 class AISynthesizer:
     def __init__(self):
-        self.gemini_client = None
-        self.openai_client = None
-        self._init_clients()
+        self.registry = registry
 
-    def _init_clients(self):
-        if settings.gemini_api_key:
-            try:
-                from google import genai
-                self.gemini_client = genai.Client(api_key=settings.gemini_api_key)
-            except Exception as e:
-                logger.warning("Could not initialize Google GenAI: %s", e)
-
-        if settings.openai_api_key:
-            self.openai_client = True
-
-    def synthesize_answer(self, query: str, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def synthesize_answer(
+        self,
+        query: str,
+        documents: List[Dict[str, Any]],
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if not documents:
             return {
                 "answer": "No relevant web pages could be scraped for this query.",
                 "sources": [],
-                "confidence": "low"
+                "confidence": "low",
             }
 
         context_parts: List[str] = []
@@ -48,28 +43,41 @@ class AISynthesizer:
 
         context_text = "\n".join(context_parts)
 
-        if self.gemini_client:
+        active_provider = self.registry.get_provider(provider)
+        if active_provider:
             try:
+                system_prompt = (
+                    "You are an expert AI research assistant. Your task is to synthesize answers "
+                    "strictly based on scraped web content. Cite sources using [1], [2], etc., and "
+                    "clearly highlight key facts, takeaways, and nuances."
+                )
                 prompt = (
                     f"User Query: {query}\n\n"
                     f"Scraped web content:\n{context_text}\n\n"
                     f"Instructions:\n"
-                    f"1. Synthesize an answer to the query based on the sources.\n"
+                    f"1. Synthesize a comprehensive, accurate answer to the query based on the sources.\n"
                     f"2. Cite sources using [1], [2], etc.\n"
                     f"3. Highlight key facts and takeaways."
                 )
-                response = self.gemini_client.models.generate_content(  # pyright: ignore[reportUnknownMemberType]
-                    model=settings.default_model,
-                    contents=prompt
+                answer_text = active_provider.generate(
+                    prompt=prompt,
+                    system=system_prompt,
+                    model=model,
                 )
-                return {
-                    "answer": response.text,
-                    "sources": sources,
-                    "model_used": settings.default_model,
-                    "confidence": "high"
-                }
+                if answer_text:
+                    return {
+                        "answer": answer_text,
+                        "sources": sources,
+                        "provider_used": active_provider.name,
+                        "model_used": model or active_provider.get_default_model(),
+                        "confidence": "high",
+                    }
             except Exception as e:
-                logger.error("Gemini generation error: %s", e)
+                logger.error(
+                    "Error during AI synthesis with provider '%s': %s",
+                    active_provider.name,
+                    e,
+                )
 
         return self._heuristic_synthesis(query, documents, sources)
 
@@ -88,11 +96,16 @@ class AISynthesizer:
                 "author": art.get("author"),
                 "published_date": art.get("date"),
                 "source": art.get("source", "Web"),
-                "image": art.get("image", "")
+                "image": art.get("image", ""),
             })
         return formatted
 
-    def _heuristic_synthesis(self, query: str, documents: List[Dict[str, Any]], sources: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _heuristic_synthesis(
+        self,
+        query: str,
+        documents: List[Dict[str, Any]],
+        sources: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
         summary_lines = [f"### Findings for: '{query}'\n"]
 
         for idx, doc in enumerate(documents[:5], 1):
@@ -104,8 +117,10 @@ class AISynthesizer:
         return {
             "answer": "\n".join(summary_lines),
             "sources": sources,
+            "provider_used": "heuristic",
             "model_used": "extractor",
-            "confidence": "medium"
+            "confidence": "medium",
         }
+
 
 ai_synthesizer = AISynthesizer()

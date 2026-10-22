@@ -27,7 +27,7 @@ Designed to be consumed by external systems (such as **futures signals**), CLI s
 |                  Python AI Microservice                     |
 |  - Federated public-web search (DuckDuckGo, SearXNG, Brave) |
 |  - HTML cleaning & boilerplate removal (Trafilatura & BS4)  |
-|  - AI synthesis (Google Gemini, OpenAI, or heuristics)      |
+|  - AI synthesis (Gemini, Claude, OpenAI, Kimi, Qwen, Custom) |
 |  - Structured news & content formatting                     |
 +-------------------------------------------------------------+
 ```
@@ -115,13 +115,105 @@ rejects claims that were not available by the bar timestamp, and
 `evaluate_sentiment_value` retains the feature only when held-out,
 cost-aware mean return and accuracy both improve over the market baseline.
 
-### 2. Configure Environment (Optional)
-To enable generative AI reasoning with Google Gemini:
-Edit `.env`:
+### 2. Configure AI Providers (Optional)
+
+The bot features a **modular multi-AI synthesis and chatbot engine**. It can synthesize research answers and power conversational interactions with any major LLM provider.
+
+If no AI keys are provided, the system gracefully falls back to built-in heuristic extraction algorithms with zero errors.
+
+Edit `.env` to configure your preferred provider:
+
 ```env
-GEMINI_API_KEY="your-gemini-api-key-here"
+# Optional: force a specific active provider (gemini | openai | claude | kimi | qwen | custom)
+# If left empty, the bot automatically selects the first configured key.
+AI_PROVIDER=
+
+# 1. Google Gemini
+GEMINI_API_KEY="your-gemini-api-key"
+GEMINI_MODEL="gemini-2.5-flash"
+
+# 2. OpenAI / ChatGPT
+OPENAI_API_KEY="your-openai-api-key"
+OPENAI_MODEL="gpt-4o-mini"
+OPENAI_API_BASE="https://api.openai.com/v1"
+
+# 3. Anthropic Claude
+ANTHROPIC_API_KEY="your-anthropic-api-key"
+CLAUDE_MODEL="claude-3-5-sonnet-20241022"
+
+# 4. Moonshot Kimi
+KIMI_API_KEY="your-kimi-api-key"
+KIMI_MODEL="moonshot-v1-8k"
+
+# 5. Alibaba Qwen (DashScope)
+QWEN_API_KEY="your-qwen-api-key"
+QWEN_MODEL="qwen-plus"
+QWEN_API_BASE="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+# 6. Custom / Local AI (Ollama, DeepSeek, Groq, vLLM, LM Studio)
+CUSTOM_AI_BASE_URL="http://localhost:11434/v1"
+CUSTOM_AI_API_KEY=""
+CUSTOM_AI_MODEL="llama3.1"
 ```
-*(If no API key is provided, the scraper operates using its built-in heuristic extraction algorithms).*
+
+---
+
+### Guide: How to Add Custom AI Models to the Bot
+
+If you clone this repository and want to connect a custom LLM or local model, you have two simple ways:
+
+#### Method A: Zero-Code Configuration (OpenAI-Compatible / Ollama / DeepSeek)
+Most modern LLMs and inference runners (such as Ollama, DeepSeek, Groq, Together AI, Mistral, LocalAI, vLLM, or LM Studio) expose an OpenAI-compatible REST endpoint. You can plug them in directly via `.env` without modifying any code:
+
+```env
+AI_PROVIDER=custom
+CUSTOM_AI_BASE_URL="http://localhost:11434/v1"
+CUSTOM_AI_API_KEY="your-optional-token"
+CUSTOM_AI_MODEL="mistral"
+```
+
+#### Method B: Add a Custom Provider Class in Python
+To add specialized logic or a proprietary SDK, create a new provider module in `python_ai/app/providers/` implementing `BaseAIProvider`:
+
+```python
+# python_ai/app/providers/my_provider.py
+from typing import Any, Dict, List, Optional
+from python_ai.app.providers.base import BaseAIProvider
+from python_ai.app.providers.registry import register_provider
+
+@register_provider("my_model")
+class MyCustomProvider(BaseAIProvider):
+    name = "my_model"
+
+    def is_configured(self) -> bool:
+        # Check if required environment variables or credentials exist
+        return True
+
+    def get_default_model(self) -> str:
+        return "my-model-v1"
+
+    def generate(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 2048,
+    ) -> str:
+        # Call your LLM API here and return the synthesized answer string
+        return "Synthesized answer from my custom model"
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        system: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 2048,
+    ) -> str:
+        # Call your chat endpoint and return the reply
+        return "Chat reply from my custom model"
+```
+
+Then simply import it or set `AI_PROVIDER=my_model` in your `.env`. The bot's `AISynthesizer` and `ChatBot` will automatically discover and use your provider!
 
 ### 3. Run the Bot
 

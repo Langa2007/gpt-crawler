@@ -4,9 +4,11 @@ import time
 from typing import Any, Dict, List, Optional
 
 from python_ai.app.config import settings
+from python_ai.app.providers.registry import registry
 from python_ai.app.searcher import search_engine
 
 logger = logging.getLogger(__name__)
+
 
 class _Session:
     def __init__(self, session_id: str, mode: str, site_context: str):
@@ -53,7 +55,7 @@ _CRYPTO_COINS = {
 }
 _SEARCH_KEYWORDS = re.compile(
     r"\b(what is|tell me about|explain|latest|news|price|how much|current|search|find|look up)\b",
-    re.I
+    re.I,
 )
 
 
@@ -69,11 +71,18 @@ def _detect_coin(message: str) -> Optional[str]:
     return None
 
 
-def _gemini_chat(session: _Session, user_message: str, extra_context: str = "") -> Optional[str]:
-    try:
-        from google import genai
-        client = genai.Client(api_key=settings.gemini_api_key)
+def _ai_chat(
+    session: _Session,
+    user_message: str,
+    extra_context: str = "",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+) -> Optional[str]:
+    active_provider = registry.get_provider(provider)
+    if not active_provider:
+        return None
 
+    try:
         system_parts = [
             "You are a helpful assistant embedded in an internet scraper bot.",
         ]
@@ -94,21 +103,22 @@ def _gemini_chat(session: _Session, user_message: str, extra_context: str = "") 
         if extra_context:
             system_parts.append(f"\nRelevant live data:\n{extra_context}")
 
-        conversation = "\n".join(system_parts) + "\n\n"
-        for turn in session.history[-10:]:
-            role_label = "User" if turn["role"] == "user" else "Assistant"
-            conversation += f"{role_label}: {turn['content']}\n"
-        conversation += f"User: {user_message}\nAssistant:"
+        system_text = "\n".join(system_parts)
 
-        response = client.models.generate_content(  # pyright: ignore[reportUnknownMemberType]
-            model=settings.default_model,
-            contents=conversation
+        # Build turn list for chat
+        messages: List[Dict[str, str]] = []
+        for turn in session.history[-10:]:
+            messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        reply = active_provider.chat(
+            messages=messages,
+            system=system_text,
+            model=model,
         )
-        if response.text:
-            return response.text.strip()
-        return None
+        return reply.strip() if reply else None
     except Exception as e:
-        logger.error("Gemini chat error: %s", e)
+        logger.error("AI chat error using provider '%s': %s", active_provider.name, e)
         return None
 
 
@@ -154,6 +164,8 @@ def chat(
     session_id: str = "default",
     mode: str = "general",
     site_context: str = "",
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     session = _get_session(session_id, mode, site_context)
     session.add("user", message)
@@ -189,9 +201,13 @@ def chat(
         except Exception as e:
             logger.warning("Chat search error: %s", e)
 
-    reply = None
-    if settings.gemini_api_key:
-        reply = _gemini_chat(session, message, extra_context)
+    reply = _ai_chat(
+        session,
+        message,
+        extra_context,
+        provider=provider,
+        model=model,
+    )
 
     if not reply:
         reply = _rule_response(session, message, extra_context)

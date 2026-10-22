@@ -64,9 +64,11 @@ type NewsArticle struct {
 }
 
 type NewsResponse struct {
-	Topic    string        `json:"topic"`
-	Count    int           `json:"count"`
-	Articles []NewsArticle `json:"articles"`
+	Topic       string        `json:"topic"`
+	Count       int           `json:"count"`
+	CollectedAt string        `json:"collected_at,omitempty"`
+	Errors      []string      `json:"errors,omitempty"`
+	Articles    []NewsArticle `json:"articles"`
 }
 
 type QueryResponse struct {
@@ -139,7 +141,8 @@ type FuturesSignal struct {
 }
 
 type FuturesSignalsResponse struct {
-	Count    int             `json:"count"`
-	Strategy string          `json:"strategy"`
-	Signals  []FuturesSignal `json:"signals"`
+	Count      int             `json:"count"`
+	Strategy   string          `json:"strategy"`
+	Signals    []FuturesSignal `json:"signals"`
+	Collection map[string]any  `json:"collection,omitempty"`
 }
