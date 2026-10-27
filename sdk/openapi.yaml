@@ -26,6 +26,10 @@ servers:
         default: http
       host:
         default: localhost:8080
+# Most endpoints are public. Research and news can optionally use API-key auth,
+# which is declared directly on those operations below.
+security:
+  - {}
 tags:
   - name: System
   - name: Research
