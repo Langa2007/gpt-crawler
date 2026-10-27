@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Validate the OpenAPI contract
+  # ─────────────────────────────────────────────
+  openapi-lint:
+    name: Validate OpenAPI contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Redocly CLI
+        run: npm install -g @redocly/cli@latest
+
+      - name: Lint sdk/openapi.yaml
+        run: redocly lint sdk/openapi.yaml --format=stylish
+
+  # ─────────────────────────────────────────────
+  # 2. Go server + SDK tests
+  # ─────────────────────────────────────────────
+  go-tests:
+    name: Go tests (server + SDK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Run server tests
+        run: go test ./... -race -count=1
+        working-directory: .
+
+      - name: Run SDK tests
+        run: go test ./... -race -count=1 -v
+        working-directory: sdk/go/scrapper
+
+      - name: Run go vet (server)
+        run: go vet ./...
+
+      - name: Run go vet (SDK)
+        run: go vet ./...
+        working-directory: sdk/go/scrapper
+
+  # ─────────────────────────────────────────────
+  # 3. Python AI microservice tests
+  # ─────────────────────────────────────────────
+  python-tests:
+    name: Python AI tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python_ai/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r python_ai/requirements.txt pytest
+
+      - name: Run Python tests
+        run: pytest python_ai/tests -v
+        env:
+          PYTHONPATH: .
+

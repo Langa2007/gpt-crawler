@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      # Go SDK releases: sdk/go/scrapper/v*.*.*
+      - "sdk/go/scrapper/v[0-9]*"
+      # Future SDK releases: sdk/typescript/v*.*.*, sdk/python/v*.*.*, etc.
+      - "sdk/typescript/v[0-9]*"
+      - "sdk/python/v[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. Run full CI before publishing anything
+  # ─────────────────────────────────────────────
+  ci-gate:
+    name: CI gate before release
+    uses: ./.github/workflows/ci.yml
+
+  # ─────────────────────────────────────────────
+  # 2. Create a GitHub Release with release notes
+  # ─────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract tag and version
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # Derive a human-readable version from the tag
+          # e.g. sdk/go/scrapper/v0.1.0 -> Go SDK v0.1.0
+          if [[ "$TAG" == sdk/go/scrapper/* ]]; then
+            LABEL="Go SDK ${TAG#sdk/go/scrapper/}"
+            SDK="go"
+          elif [[ "$TAG" == sdk/typescript/* ]]; then
+            LABEL="TypeScript SDK ${TAG#sdk/typescript/}"
+            SDK="typescript"
+          elif [[ "$TAG" == sdk/python/* ]]; then
+            LABEL="Python SDK ${TAG#sdk/python/}"
+            SDK="python"
+          else
+            LABEL="$TAG"
+            SDK="unknown"
+          fi
+          echo "label=$LABEL" >> "$GITHUB_OUTPUT"
+          echo "sdk=$SDK"     >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --title "${{ steps.tag.outputs.label }}" \
+            --generate-notes \
+            --draft=false
+
+  # ─────────────────────────────────────────────
+  # 3. (Future) npm publish — uncomment when TypeScript SDK exists
+  # ─────────────────────────────────────────────
+  # npm-publish:
+  #   name: Publish to npm
+  #   needs: ci-gate
+  #   if: startsWith(github.ref, 'refs/tags/sdk/typescript/')
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "20"
+  #         registry-url: "https://registry.npmjs.org"
+  #     - run: npm ci
+  #       working-directory: sdk/typescript
+  #     - run: npm run build
+  #       working-directory: sdk/typescript
+  #     - run: npm publish --access public
+  #       working-directory: sdk/typescript
+  #       env:
+  #         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ─────────────────────────────────────────────
+  # 4. (Future) PyPI publish — uncomment when Python SDK exists
+  # ─────────────────────────────────────────────
+  # pypi-publish:
+  #   name: Publish to PyPI
+  #   needs: ci-gate
+  #   if: startsWith(github.ref, 'refs/tags/sdk/python/')
+  #   runs-on: ubuntu-latest
+  #   environment: pypi
+  #   permissions:
+  #     id-token: write   # trusted publishing (no token needed)
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.11"
+  #     - run: pip install build
+  #     - run: python -m build
+  #       working-directory: sdk/python
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         packages-dir: sdk/python/dist/
+

@@ -1,0 +1,29 @@
+name: Breaking-change check
+
+on:
+  pull_request:
+    paths:
+      - "sdk/openapi.yaml"
+
+jobs:
+  oasdiff:
+    name: Detect breaking API changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install oasdiff
+        run: |
+          curl -sSL https://raw.githubusercontent.com/Tufin/oasdiff/main/install.sh | bash
+          echo "$HOME/.oasdiff/bin" >> "$GITHUB_PATH"
+
+      - name: Check for breaking changes vs main
+        run: |
+          git fetch origin main
+          oasdiff breaking \
+            --base  "origin/main:sdk/openapi.yaml" \
+            --revision "sdk/openapi.yaml" \
+            --fail-on-diff
+

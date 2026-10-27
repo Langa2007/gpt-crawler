@@ -2,13 +2,30 @@
 openapi: 3.0.3
 info:
   title: Scrapper API
-  version: 1.0.0
+  version: 0.1.0
   description: >-
-    Language-neutral contract for the Scrapper HTTP API. Use this document to
-    call the REST API directly or generate a client in a language of your choice.
+    Language-neutral REST contract for the Scrapper HTTP API. Use this document to
+    call the API directly or generate a typed client in any language with an
+    OpenAPI generator. The server must be deployed and run separately — installing
+    an SDK package does not install the server.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    name: Scrapper SDK
+    url: https://github.com/Langa2007/scrapper
 servers:
-  - url: http://localhost:8080
-    description: Local Go API gateway
+  - url: "{scheme}://{host}"
+    description: >-
+      Self-hosted Scrapper server. Replace {scheme} and {host} with your actual
+      deployment URL (e.g. https://scrapper.example.com). For local development
+      use http://localhost:8080.
+    variables:
+      scheme:
+        enum: [http, https]
+        default: http
+      host:
+        default: localhost:8080
 tags:
   - name: System
   - name: Research
@@ -294,15 +311,18 @@ components:
       properties:
         error:
           type: string
+          example: "query cannot be empty"
         status:
           type: integer
+          example: 400
     HealthResponse:
       type: object
+      required: [status, service, timestamp]
       properties:
-        status: { type: string }
-        service: { type: string }
+        status: { type: string, example: healthy }
+        service: { type: string, example: go_scraper_gateway }
         timestamp: { type: string, format: date-time }
-        python_service: { type: string }
+        python_service: { type: string, example: connected }
         python_info:
           type: object
           additionalProperties: true
@@ -310,17 +330,19 @@ components:
       type: object
       required: [query]
       properties:
-        query: { type: string, minLength: 1 }
+        query: { type: string, minLength: 1, example: "Recent developments in renewable energy" }
         max_results: { type: integer, minimum: 1, maximum: 10, default: 5 }
         providers:
           type: array
           items: { type: string }
+          example: [duckduckgo]
     QueryResponse:
       type: object
+      required: [query, answer, confidence, duration_ms, sources]
       properties:
         query: { type: string }
         answer: { type: string }
-        confidence: { type: string }
+        confidence: { type: string, example: high }
         duration_ms: { type: integer, format: int64 }
         providers:
           type: array
@@ -334,6 +356,7 @@ components:
             $ref: '#/components/schemas/Source'
     Source:
       type: object
+      required: [id, title, url]
       properties:
         id: { type: integer }
         title: { type: string }
@@ -345,14 +368,15 @@ components:
       type: object
       required: [topic]
       properties:
-        topic: { type: string, minLength: 1 }
+        topic: { type: string, minLength: 1, example: "artificial intelligence" }
         limit: { type: integer, minimum: 1, maximum: 25, default: 10 }
         timeframe:
           type: string
-          description: Search timeframe, commonly d (day), w (week), or m (month).
+          description: Search timeframe — d (day), w (week), or m (month).
           default: w
     NewsResponse:
       type: object
+      required: [topic, count, articles]
       properties:
         topic: { type: string }
         count: { type: integer }
@@ -366,6 +390,7 @@ components:
             $ref: '#/components/schemas/NewsArticle'
     NewsArticle:
       type: object
+      required: [title, url, source]
       properties:
         title: { type: string }
         url: { type: string, format: uri }
@@ -386,6 +411,7 @@ components:
         timeout_sec: { type: integer, minimum: 1, maximum: 60 }
     ScrapeResponse:
       type: object
+      required: [count, results]
       properties:
         count: { type: integer }
         results:
@@ -403,6 +429,7 @@ components:
         allow_subdomains: { type: boolean, default: false }
     CrawlResponse:
       type: object
+      required: [start_url, count, results]
       properties:
         start_url: { type: string, format: uri }
         count: { type: integer }
@@ -412,6 +439,7 @@ components:
             $ref: '#/components/schemas/ScrapeResult'
     ScrapeResult:
       type: object
+      required: [url, status_code, title, clean_text, duration_ms]
       properties:
         url: { type: string, format: uri }
         final_url: { type: string, format: uri }
@@ -422,7 +450,10 @@ components:
         content_type: { type: string }
         links:
           type: array
-          items: { type: string, format: uri }
+          items: { type: string }
+          description: >-
+            Absolute and relative URLs extracted from the page.
+            Items are not guaranteed to be absolute URIs.
         metadata:
           type: object
           additionalProperties: { type: string }
@@ -432,12 +463,23 @@ components:
       type: object
       required: [message]
       properties:
-        message: { type: string, minLength: 1 }
+        message: { type: string, minLength: 1, example: "What is the latest news on AI?" }
         session_id: { type: string, default: default }
-        mode: { type: string, default: general }
+        mode: { type: string, default: general, description: "general | crypto | nav" }
         site_context: { type: string }
+        provider:
+          type: string
+          description: >-
+            Optional AI provider override for this request.
+            Accepted values: gemini, openai, claude, kimi, qwen, custom.
+            Falls back to the server's configured default when omitted.
+        model:
+          type: string
+          description: >-
+            Optional model override. Only applies when provider is also set.
     ChatResponse:
       type: object
+      required: [reply, session_id, mode, history_length]
       properties:
         reply: { type: string }
         session_id: { type: string }
@@ -446,25 +488,40 @@ components:
           type: array
           items:
             type: object
-            additionalProperties: true
+            properties:
+              title: { type: string }
+              url: { type: string, format: uri }
+            additionalProperties: false
         history_length: { type: integer }
     CryptoRequest:
       type: object
       required: [coin]
       properties:
-        coin: { type: string, minLength: 1 }
+        coin: { type: string, minLength: 1, example: bitcoin }
     CryptoAsset:
       type: object
-      description: Crypto summary fields vary by upstream market data provider.
+      description: >-
+        Crypto asset summary. Core fields are always present.
+        Additional fields may appear depending on the upstream market data provider.
+      required: [id, name, symbol, signal, momentum_score]
       properties:
         id: { type: string }
         name: { type: string }
         symbol: { type: string }
-        price_usd: { type: number, format: double }
+        image: { type: string, format: uri }
+        price_usd: { type: number, format: double, nullable: true }
+        change_1h_pct: { type: number, format: double, nullable: true }
         change_24h_pct: { type: number, format: double }
+        change_7d_pct: { type: number, format: double, nullable: true }
+        market_cap_usd: { type: number, format: double, nullable: true }
+        volume_24h_usd: { type: number, format: double, nullable: true }
+        high_24h_usd: { type: number, format: double, nullable: true }
+        low_24h_usd: { type: number, format: double, nullable: true }
         signal: { type: string }
         signal_color: { type: string }
         momentum_score: { type: number, format: double }
+        last_updated: { type: string }
+        disclaimer: { type: string }
         collection:
           type: object
           additionalProperties: true
@@ -478,6 +535,7 @@ components:
         limit: { type: integer, minimum: 1, default: 10 }
     CryptoMarketResponse:
       type: object
+      required: [count, coins]
       properties:
         count: { type: integer }
         coins:
@@ -489,17 +547,24 @@ components:
           additionalProperties: true
     TrendingResponse:
       type: object
+      required: [trending]
       properties:
         trending:
           type: array
           items:
             type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              symbol: { type: string }
+              market_cap_rank: { type: integer }
             additionalProperties: true
         collection:
           type: object
           additionalProperties: true
     FuturesSignalsResponse:
       type: object
+      required: [count, strategy, signals]
       properties:
         count: { type: integer }
         strategy: { type: string }
@@ -512,6 +577,7 @@ components:
           additionalProperties: true
     FuturesSignal:
       type: object
+      required: [symbol, direction, price, score, entry, sl, tp1, tp2, tp3, leverage]
       properties:
         symbol: { type: string }
         base: { type: string }
