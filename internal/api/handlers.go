@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -212,6 +213,30 @@ func (h *Handler) ChatBot(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Mode == "" {
 		req.Mode = "general"
+	}
+
+	if h.agent != nil {
+		prompt := req.Message
+		if req.Mode != "general" {
+			prompt = fmt.Sprintf("Conversation mode: %s\n\n%s", req.Mode, prompt)
+		}
+		if strings.TrimSpace(req.SiteContext) != "" {
+			prompt = fmt.Sprintf("Website context:\n%s\n\nUser request:\n%s", req.SiteContext, prompt)
+		}
+
+		agentResponse, err := h.agent.Run(r.Context(), req.SessionID, prompt)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "ADK chatbot error: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, crawler.ChatResponse{
+			Reply:         agentResponse.Answer,
+			SessionID:     agentResponse.SessionID,
+			Mode:          req.Mode,
+			Sources:       []map[string]any{},
+			HistoryLength: 0,
+		})
+		return
 	}
 
 	resp, err := h.aiClient.Chat(r.Context(), req)

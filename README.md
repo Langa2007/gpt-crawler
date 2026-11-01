@@ -99,6 +99,16 @@ The startup script also uses `.venv/bin/python` if it exists. If you prefer a
 system Python installation, install the requirements with `python3 -m pip` and
 ensure `python3` is available on your `PATH`.
 
+Install the Google Agent Development Kit (ADK) for Go from the repository root:
+
+```bash
+go get google.golang.org/adk/v2
+```
+
+The project already declares the ADK dependency in `go.mod`; run the command
+above when setting up a fresh checkout or when adding it to another Go
+integration.
+
 The offline forecasting module is available as
 `python_ai.app.torch_forecast.evaluate_torch`. It uses chronological
 out-of-sample evaluation, reports class probabilities and confidence, compares
@@ -314,6 +324,25 @@ The SDK includes methods for health checks, research, news, scraping, crawling,
 chat, and crypto endpoints. See [the Go SDK guide](sdk/go/scrapper/README.md)
 for authentication, response types, and full usage details. The SDK sends
 requests to the Go gateway on port 8080; port 5000 is the internal Python API.
+
+### Google ADK chatbot
+
+The Go gateway uses the installed Google ADK agent for `/api/v1/chat` whenever
+an ADK model is configured. Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) for
+Gemini, or `OPENAI_API_KEY`/`OPENAI_BASE_URL` for an OpenAI-compatible model.
+The ADK agent exposes web search, URL scraping, site crawling, crypto
+intelligence, and news tools. Without ADK credentials, `/api/v1/chat` keeps its
+legacy Python-service behavior.
+
+You can inspect the active agent with `GET /api/v1/agent/info` and invoke it
+directly with `POST /api/v1/agent/run`:
+
+```json
+{
+  "prompt": "Find the latest developments in Go web scraping",
+  "session_id": "demo-session"
+}
+```
 
 ### Research interface
 
