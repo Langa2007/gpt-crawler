@@ -24,6 +24,23 @@ class TestHeuristicSynthesis(unittest.TestCase):
         self.assertIn("12 December", result["answer"])
         self.assertNotIn("6 August", result["answer"])
 
+    def test_recurring_date_beats_publication_date(self):
+        result = AISynthesizer()._heuristic_synthesis(
+            "when is christmas",
+            [
+                {
+                    "title": "Christmas - Wikipedia",
+                    "text": (
+                        "Christmas is celebrated on December 25 each year. "
+                        "A related article was published on December 9, 2023."
+                    ),
+                }
+            ],
+            [],
+        )
+        self.assertIn("December 25", result["answer"])
+        self.assertNotIn("December 9, 2023", result["answer"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -107,23 +107,76 @@ class AISynthesizer:
         documents: List[Dict[str, Any]],
         sources: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        direct_answer = self._date_question_answer(query, documents)
-        if direct_answer:
-            return {
-                "answer": direct_answer,
-                "sources": sources,
-                "provider_used": "heuristic",
-                "model_used": "extractor",
-                "confidence": "medium",
-            }
+        query_terms = self._terms(query)
+        candidates: List[tuple[float, int, str, str]] = []
+        date_pattern = re.compile(
+            r"\b(?:January|February|March|April|May|June|July|August|September|"
+            r"October|November|December)\s+\d{1,2}(?:,?\s+\d{4})?\b|"
+            r"\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|"
+            r"September|October|November|December)(?:,?\s+\d{4})?\b",
+            re.IGNORECASE,
+        )
 
-        summary_lines = [f"### Findings for: '{query}'\n"]
+        for index, document in enumerate(documents[:5], 1):
+            title = str(document.get("title", f"Source {index}"))
+            text = str(document.get("text") or document.get("snippet") or "")
+            title_terms = self._terms(title)
+            for sentence in self._sentences(text):
+                sentence_terms = self._terms(sentence)
+                query_overlap = len(query_terms & sentence_terms)
+                title_overlap = len(query_terms & title_terms)
+                context_overlap = len(title_terms & sentence_terms)
+                date_bonus = (
+                    2
+                    if date_pattern.search(sentence)
+                    and (query_overlap > 0 or context_overlap > 0)
+                    and re.search(r"\b(when|date|day|year)\b", query, re.IGNORECASE)
+                    else 0
+                )
+                date_match = date_pattern.search(sentence)
+                if (
+                    date_match
+                    and not re.search(r"\b\d{4}\b", date_match.group(0))
+                    and re.search(r"\b(when|date|day)\b", query, re.IGNORECASE)
+                ):
+                    date_bonus += 2
+                score = (
+                    query_overlap * 4
+                    + title_overlap * 2
+                    + context_overlap
+                    + date_bonus
+                )
+                if score > 0:
+                    candidates.append((score, index, title, sentence))
 
-        for idx, doc in enumerate(documents[:5], 1):
-            title = doc.get("title", f"Source {idx}")
-            url = doc.get("url", "")
-            snippet = doc.get("snippet") or (doc.get("text", "")[:280] + "...")
-            summary_lines.append(f"- **[{title}]({url})** [Source {idx}]:\n  {snippet}\n")
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        selected: List[tuple[int, str, str]] = []
+        seen_sentences: set[str] = set()
+        minimum_score = candidates[0][0] - 2 if candidates else 0
+        max_selected = 1 if re.search(
+            r"\b(when|date|day|year)\b", query, re.IGNORECASE
+        ) else 3
+        for score, index, title, sentence in candidates:
+            if score < minimum_score:
+                continue
+            key = sentence.casefold()
+            if key in seen_sentences:
+                continue
+            seen_sentences.add(key)
+            selected.append((index, title, sentence))
+            if len(selected) == max_selected:
+                break
+
+        if selected:
+            summary_lines = [f"### Answer for: '{query}'\n"]
+            for index, title, sentence in selected:
+                summary_lines.append(f"- {sentence} [Source {index}: {title}]")
+        else:
+            summary_lines = [f"### Findings for: '{query}'\n"]
+            for index, document in enumerate(documents[:5], 1):
+                title = document.get("title", f"Source {index}")
+                text = document.get("text") or document.get("snippet") or ""
+                summary_lines.append(f"- **[{title}]** [Source {index}]:\n  {text[:280]}...")
 
         return {
             "answer": "\n".join(summary_lines),
@@ -134,48 +187,31 @@ class AISynthesizer:
         }
 
     @staticmethod
-    def _date_question_answer(query: str, documents: List[Dict[str, Any]]) -> str:
-        if not re.search(r"\b(when|date)\b", query, re.IGNORECASE):
-            return ""
-
-        query_words = {
-            AISynthesizer._normalize_query_word(word)
-            for word in re.findall(r"[A-Za-z]{4,}", query)
-            if word.lower() not in {"when", "what", "date", "does", "happen"}
-        }
-        month = (
-            r"(?:January|February|March|April|May|June|July|August|September|"
-            r"October|November|December)"
-        )
-        date_pattern = re.compile(
-            rf"\b(?:{month}\s+\d{{1,2}}|\d{{1,2}}\s+{month})(?:,?\s+\d{{4}})?\b",
-            re.IGNORECASE,
-        )
-        candidates: List[tuple[int, str, str]] = []
-        for document in documents:
-            title = str(document.get("title", ""))
-            text = str(document.get("text") or document.get("snippet") or "")
-            haystack = f"{title} {text}"
-            overlap = len(query_words & {
-                AISynthesizer._normalize_query_word(word)
-                for word in re.findall(r"[A-Za-z]{4,}", haystack)
-            })
-            for sentence in re.split(r"(?<=[.!?])\s+", text):
-                match = date_pattern.search(sentence)
-                if match:
-                    candidates.append((overlap, match.group(0), sentence.strip()))
-        if not candidates:
-            return ""
-        _, date, sentence = max(candidates, key=lambda item: item[0])
-        return f"The date is **{date}**. {sentence}"
+    def _sentences(text: str) -> List[str]:
+        return [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", text)
+            if sentence.strip()
+        ]
 
     @staticmethod
-    def _normalize_query_word(word: str) -> str:
-        normalized = word.lower()
-        return {
-            "kenyan": "kenya",
-            "jamaican": "jamaica",
-        }.get(normalized, normalized)
+    def _terms(text: str) -> set[str]:
+        stop_words = {
+            "about", "after", "also", "and", "are", "does", "for", "from",
+            "have", "how", "into", "is", "that", "the", "this", "what",
+            "when", "which", "who", "with", "would",
+        }
+        terms = set()
+        for word in re.findall(r"[A-Za-z]{3,}", text.casefold()):
+            if word in stop_words:
+                continue
+            normalized = re.sub(r"(ies|ing|ed|es|s)$", "", word)
+            if len(normalized) > 5 and normalized.endswith("an"):
+                normalized = normalized[:-2]
+            elif len(normalized) > 4 and normalized.endswith("a"):
+                normalized = normalized[:-1]
+            terms.add(normalized)
+        return terms
 
 
 ai_synthesizer = AISynthesizer()

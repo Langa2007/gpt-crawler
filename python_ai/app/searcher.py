@@ -1,5 +1,6 @@
 import logging
 from html import unescape
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -15,6 +16,11 @@ except ImportError:
     from duckduckgo_search import DDGS  # pyright: ignore[reportUnknownVariableType, reportMissingImports]
 
 logger = logging.getLogger(__name__)
+
+SEARCH_STOP_WORDS = {
+    "about", "does", "happen", "is", "it", "the", "what", "when", "which",
+    "who", "why", "how", "date", "day", "year", "tell", "me", "please",
+}
 
 
 class SearchEngine:
@@ -115,6 +121,10 @@ class SearchEngine:
     ) -> List[Dict[str, Any]]:
         if search_type == "news":
             return []
+        topic_query = " ".join(
+            word for word in re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]*", query)
+            if word.casefold() not in SEARCH_STOP_WORDS
+        ).strip() or query
         with httpx.Client(
             timeout=settings.search_timeout_sec,
             headers={"User-Agent": settings.wikipedia_user_agent},
@@ -127,7 +137,7 @@ class SearchEngine:
                     "action": "query",
                     "generator": "search",
                     "gsrnamespace": "0",
-                    "gsrsearch": query,
+                    "gsrsearch": topic_query,
                     "gsrlimit": min(max_results, 20),
                     "prop": "extracts|info",
                     "exintro": "1",
@@ -148,11 +158,19 @@ class SearchEngine:
             results.append({
                 "title": item.get("title", ""),
                 "url": item.get("fullurl", f"https://en.wikipedia.org/?curid={page_id}"),
-                "snippet": unescape(item.get("extract", "")),
+                "snippet": self._clean_wiki_text(unescape(item.get("extract", ""))),
                 "source": "wikipedia",
                 "provider": "wikipedia",
             })
         return results
+
+    @staticmethod
+    def _clean_wiki_text(value: str) -> str:
+        text = re.sub(r"<ref[^>]*>.*?</ref>", " ", value, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r"\{\{[^{}]*\}\}", " ", text)
+        text = re.sub(r"\[\[([^|\]]+\|)?([^\]]+)\]\]", r"\2", text)
+        text = re.sub(r"<[^>]+>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
 
     def _search_brave(
         self, query: str, max_results: int, search_type: str, timelimit: Optional[str]

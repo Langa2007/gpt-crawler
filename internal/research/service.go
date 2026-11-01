@@ -74,8 +74,13 @@ func (s *Service) Research(ctx context.Context, query string, limit int, provide
 	for index, document := range scraped {
 		if document.Error == "" && document.CleanText != "" {
 			if index < len(results) {
+				provider := stringValue(results[index]["provider"])
+				snippet := stringValue(results[index]["snippet"])
+				if provider == "wikipedia" && strings.TrimSpace(snippet) != "" {
+					document.CleanText = snippet
+				}
 				document.Metadata = map[string]string{
-					"provider":     stringValue(results[index]["provider"]),
+					"provider":     provider,
 					"collected_at": stringValue(results[index]["collected_at"]),
 				}
 			}
