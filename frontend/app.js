@@ -197,8 +197,21 @@ function initScraper() {
 
   function addUrl(url) {
     url = url.trim();
-    if (!url || urls.includes(url)) return;
-    if (!url.startsWith('http')) url = 'https://' + url;
+    if (!url) return;
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) url = 'https://' + url;
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      toast('Enter a valid URL, such as https://example.com');
+      return;
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) {
+      toast('Only http:// and https:// URLs are supported');
+      return;
+    }
+    url = parsed.href;
+    if (urls.includes(url)) return;
     urls.push(url);
     renderTags();
   }

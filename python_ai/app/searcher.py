@@ -109,6 +109,45 @@ class SearchEngine:
             })
         return results
 
+    def _search_wikipedia(
+        self, query: str, max_results: int, search_type: str, timelimit: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        if search_type == "news":
+            return []
+        with httpx.Client(
+            timeout=settings.search_timeout_sec,
+            headers={"User-Agent": settings.user_agent},
+        ) as client:
+            response = request_with_retries(
+                client,
+                "GET",
+                "https://en.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "srlimit": min(max_results, 20),
+                    "format": "json",
+                    "utf8": "1",
+                },
+                attempts=settings.provider_retries,
+            )
+            payload = response.json()
+
+        results: List[Dict[str, Any]] = []
+        for item in payload.get("query", {}).get("search", [])[:max_results]:
+            page_id = item.get("pageid")
+            if not page_id:
+                continue
+            results.append({
+                "title": item.get("title", ""),
+                "url": f"https://en.wikipedia.org/?curid={page_id}",
+                "snippet": item.get("snippet", "").replace("<span class=\"searchmatch\">", "").replace("</span>", ""),
+                "source": "wikipedia",
+                "provider": "wikipedia",
+            })
+        return results
+
     def _search_brave(
         self, query: str, max_results: int, search_type: str, timelimit: Optional[str]
     ) -> List[Dict[str, Any]]:
@@ -139,30 +178,40 @@ class SearchEngine:
     def _deduplicate(items: Iterable[Dict[str, Any]], max_results: int) -> List[Dict[str, Any]]:
         seen: Set[str] = set()
         results: List[Dict[str, Any]] = []
+        by_provider: Dict[str, List[Dict[str, Any]]] = {}
         for item in items:
-            raw_url_val = item.get("url", "")
-            if not isinstance(raw_url_val, str) or not raw_url_val:
-                continue
-            raw_url: str = raw_url_val
-            parsed = urlsplit(raw_url)
-            clean_url = urlunsplit((
-                parsed.scheme,
-                parsed.netloc,
-                parsed.path,
-                urlencode([(k, v) for k, v in parse_qsl(parsed.query) if not k.lower().startswith("utm_")]),
-                "",
-            ))
-            if clean_url in seen:
-                continue
-            seen.add(clean_url)
-            item["url"] = clean_url
-            item["provider"] = str(item.get("provider") or "unknown")
-            item["collected_at"] = item.get("collected_at") or datetime.now(timezone.utc).isoformat()
-            if item.get("date"):
-                item["date"] = normalize_timestamp(item["date"]) or item["date"]
-            results.append(item)
-            if len(results) >= max_results:
-                break
+            provider = str(item.get("provider") or "unknown")
+            by_provider.setdefault(provider, []).append(item)
+
+        while len(results) < max_results and by_provider:
+            for provider in list(by_provider):
+                provider_items = by_provider[provider]
+                if not provider_items:
+                    del by_provider[provider]
+                    continue
+                item = provider_items.pop(0)
+                raw_url_val = item.get("url", "")
+                if not isinstance(raw_url_val, str) or not raw_url_val:
+                    continue
+                parsed = urlsplit(raw_url_val)
+                clean_url = urlunsplit((
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path,
+                    urlencode([(k, v) for k, v in parse_qsl(parsed.query) if not k.lower().startswith("utm_")]),
+                    "",
+                ))
+                if clean_url in seen:
+                    continue
+                seen.add(clean_url)
+                item["url"] = clean_url
+                item["provider"] = provider
+                item["collected_at"] = item.get("collected_at") or datetime.now(timezone.utc).isoformat()
+                if item.get("date"):
+                    item["date"] = normalize_timestamp(item["date"]) or item["date"]
+                results.append(item)
+                if len(results) >= max_results:
+                    break
         return results
 
 

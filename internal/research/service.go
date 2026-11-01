@@ -3,6 +3,8 @@ package research
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"scrapper/internal/crawler"
 )
@@ -37,6 +39,18 @@ func NewService(retriever Retriever, scraper Scraper, answerer Answerer) *Servic
 }
 
 func (s *Service) Research(ctx context.Context, query string, limit int, providers []string) (Answer, error) {
+	if target, err := url.Parse(strings.TrimSpace(query)); err == nil &&
+		target.Host != "" && (target.Scheme == "http" || target.Scheme == "https") {
+		scraped := s.scraper.ScrapeBatch(ctx, []string{target.String()}, 1)
+		if len(scraped) == 0 || scraped[0].Error != "" || scraped[0].CleanText == "" {
+			if len(scraped) > 0 && scraped[0].Error != "" {
+				return Answer{}, fmt.Errorf("scrape URL: %s", scraped[0].Error)
+			}
+			return Answer{Text: "The URL did not return readable web content.", Confidence: "low"}, nil
+		}
+		return s.answerer.Answer(ctx, query, scraped)
+	}
+
 	results, err := s.retriever.Retrieve(ctx, query, limit, providers)
 	if err != nil {
 		return Answer{}, fmt.Errorf("retrieve research sources: %w", err)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"scrapper/internal/crawler"
@@ -106,9 +107,13 @@ func (c *AIClient) SearchInternet(ctx context.Context, query string, maxResults 
 
 	var res struct {
 		Results []map[string]any `json:"results"`
+		Errors  []string         `json:"errors"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return nil, err
+	}
+	if len(res.Results) == 0 && len(res.Errors) > 0 {
+		return nil, fmt.Errorf("all search providers failed: %s", strings.Join(res.Errors, "; "))
 	}
 	return res.Results, nil
 }

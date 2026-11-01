@@ -25,7 +25,7 @@ Designed to be consumed by external systems (such as **futures signals**), CLI s
                                v
 +-------------------------------------------------------------+
 |                  Python AI Microservice                     |
-|  - Federated public-web search (DuckDuckGo, SearXNG, Brave) |
+|  - Federated public-web search (DuckDuckGo, Wikipedia, SearXNG, Brave) |
 |  - HTML cleaning & boilerplate removal (Trafilatura & BS4)  |
 |  - AI synthesis (Gemini, Claude, OpenAI, Kimi, Qwen, Custom) |
 |  - Structured news & content formatting                     |
@@ -486,7 +486,8 @@ Traverse public, robots-permitted pages on one site. The crawler never crosses t
 `/api/v1/query` accepts an optional `providers` array, for example `"providers": ["duckduckgo", "brave"]`. Configure the providers through `.env`:
 
 ```env
-SEARCH_PROVIDERS=duckduckgo,searxng,brave
+# SearXNG aggregates many public engines when configured.
+SEARCH_PROVIDERS=duckduckgo,wikipedia,searxng,brave
 SEARXNG_URL=https://search.example.com
 BRAVE_SEARCH_API_KEY=your-key
 ```
