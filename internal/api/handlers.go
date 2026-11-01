@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"scrapper/internal/adkagent"
 	"scrapper/internal/crawler"
 	"scrapper/internal/research"
 	"scrapper/internal/service"
@@ -16,13 +19,19 @@ type Handler struct {
 	engine   *crawler.Engine
 	aiClient *service.AIClient
 	research *research.Service
+	agent    *adkagent.ScrapperAgent
 }
 
 func NewHandler(engine *crawler.Engine, aiClient *service.AIClient) *Handler {
+	agent, err := adkagent.NewScrapperAgent(engine, aiClient)
+	if err != nil {
+		log.Printf("[ADK] Agent not active (%v) - falling back to microservice mode", err)
+	}
 	return &Handler{
 		engine:   engine,
 		aiClient: aiClient,
 		research: research.NewService(aiClient, engine, aiClient),
+		agent:    agent,
 	}
 }
 
@@ -33,12 +42,23 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		pyStatus = "unreachable: " + err.Error()
 	}
 
+	var adkStatus map[string]any
+	if h.agent != nil {
+		adkStatus = h.agent.Info()
+	} else {
+		adkStatus = map[string]any{
+			"status": "unconfigured",
+			"note":   "Set GEMINI_API_KEY or OPENAI_API_KEY to activate Google ADK agent",
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":         "healthy",
 		"service":        "go_scraper_gateway",
 		"timestamp":      time.Now().UTC().Format(time.RFC3339),
 		"python_service": pyStatus,
 		"python_info":    pyHealth,
+		"adk_agent":      adkStatus,
 	})
 }
 
@@ -279,6 +299,44 @@ func (h *Handler) GetFuturesSignals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, data)
+}
+
+func (h *Handler) RunAgent(w http.ResponseWriter, r *http.Request) {
+	if h.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "Google ADK agent is not configured with an LLM model. Configure GEMINI_API_KEY or OPENAI_API_KEY in .env.")
+		return
+	}
+
+	var req adkagent.AgentRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request payload: "+err.Error())
+		return
+	}
+
+	if strings.TrimSpace(req.Prompt) == "" {
+		writeError(w, http.StatusBadRequest, "prompt cannot be empty")
+		return
+	}
+
+	resp, err := h.agent.Run(r.Context(), req.SessionID, req.Prompt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "adk agent execution failed: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) AgentInfo(w http.ResponseWriter, r *http.Request) {
+	if h.agent == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "unconfigured",
+			"adk":    "google.golang.org/adk/v2",
+			"note":   "Set GEMINI_API_KEY or OPENAI_API_KEY to activate ADK autonomous agent",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.agent.Info())
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {

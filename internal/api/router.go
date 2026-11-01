@@ -21,6 +21,10 @@ func SetupRouter(h *Handler) http.Handler {
 	mux.HandleFunc("POST /api/v1/crypto/market", h.GetCryptoMarket)
 	mux.HandleFunc("GET /api/v1/crypto/futures-signals", h.GetFuturesSignals)
 
+	// Google ADK Autonomous Agent endpoints
+	mux.HandleFunc("POST /api/v1/agent/run", h.RunAgent)
+	mux.HandleFunc("GET /api/v1/agent/info", h.AgentInfo)
+
 	// Serve frontend dashboard and widget files.
 	frontendDir := os.Getenv("FRONTEND_DIR")
 	if frontendDir == "" {

@@ -1,0 +1,45 @@
+Scrapper is an AI internet research bot. Go is the production service boundary.
+The Go service provides the HTTP API, concurrent crawling, URL safety, rate
+limiting, scraping, research workflows, and persistence. External clients and
+the frontend call Go through the public API contract.
+
+Python is the intelligence and model service. It searches the web, extracts
+readable article text, synthesizes source-grounded answers, stores chat
+sessions, and exposes provider adapters. The provider registry can select
+Gemini, OpenAI, Claude, Kimi, Qwen, or a custom OpenAI-compatible local model.
+The Python service must keep source citations and should not invent evidence
+when web documents are unavailable.
+
+The local GPT project under python_ai/gpt is a PyTorch research prototype. It
+is not the production chatbot yet. It trains a small causal transformer on a
+local knowledge corpus and can later become a local model provider after
+quality, latency, memory, and safety have been evaluated.
+
+SentencePiece is a tokenizer and detokenizer. It trains subword vocabularies
+from raw Unicode text and supports unigram and BPE models. Whitespace is
+represented by a visible marker so encoding and decoding are reversible.
+SentencePiece model files contain the vocabulary and normalization rules. A
+pretrained model should normally keep its original tokenizer and checkpoint.
+Training a new tokenizer is appropriate for a model trained from scratch or
+for a deliberate fine-tuning experiment.
+
+The Java Agent Development Kit, called ADK Java, is an independent agent
+orchestration layer. It does not replace Go or Python. A Java ADK agent can
+define instructions, tools, sessions, and multi-agent workflows in code. It
+can call Scrapper HTTP endpoints as tools, ask Python for model inference, and
+coordinate research tasks. ADK's A2A support can connect independent agents.
+Transport-specific web wiring should remain separate from reusable agent
+runtime logic.
+
+A combined request can flow like this. A user asks a question. ADK Java plans
+the task and selects a Scrapper research tool. Go crawls permitted websites
+and returns documents. Python cleans and ranks the documents, then the local
+PyTorch model or a configured provider writes an answer. The response returns
+through ADK with citations and a compact conversation update.
+
+The long-term bot loop is message, conversation state, intent detection, tool
+selection, retrieval, model generation, citation validation, response
+streaming, and memory update. PyTorch supplies model training and inference.
+SentencePiece supplies tokenization. Go supplies reliable web operations.
+Python supplies retrieval and model adapters. Java ADK supplies optional
+high-level agent orchestration.

@@ -106,6 +106,21 @@ with the Phase Three baseline, and requires its independent `RiskEngine` before
 a signal can be approved. Missing PyTorch is reported explicitly; no fallback
 signal is generated.
 
+The experimental local GPT prototype is under `python_ai/gpt`. It is separate
+from the production provider registry and trains a small PyTorch causal
+transformer with SentencePiece tokenization. Its starter corpus documents the
+roles of the Go service, Python AI service, SentencePiece, and Java ADK
+integration. Run it from the repository root with:
+
+```bash
+python -m python_ai.gpt.gpt --steps 1000
+```
+
+The command writes a tokenizer and model checkpoint under `artifacts/gpt`.
+This prototype is intended for model and dataset experiments; it does not
+replace the existing Go crawler, Python providers, or optional Java ADK agent
+layer.
+
 Market sentiment is collected by the Python service at
 `POST /api/ai/market-sentiment`. It accepts `topic`, `limit`, `timeframe`, and
 optional `symbols`, then stores permitted prediction-market, exchange,

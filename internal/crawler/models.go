@@ -146,3 +146,17 @@ type FuturesSignalsResponse struct {
 	Signals    []FuturesSignal `json:"signals"`
 	Collection map[string]any  `json:"collection,omitempty"`
 }
+
+type AgentRunRequest struct {
+	Prompt    string `json:"prompt"`
+	SessionID string `json:"session_id,omitempty"`
+}
+
+type AgentRunResponse struct {
+	Answer     string   `json:"answer"`
+	SessionID  string   `json:"session_id"`
+	Model      string   `json:"model"`
+	Provider   string   `json:"provider"`
+	ToolsUsed  []string `json:"tools_used,omitempty"`
+	DurationMs int64    `json:"duration_ms"`
+}
