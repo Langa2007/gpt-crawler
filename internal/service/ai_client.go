@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"scrapper/internal/crawler"
@@ -17,10 +18,18 @@ import (
 type AIClient struct {
 	baseURL    string
 	httpClient *http.Client
+	errorsMu   sync.RWMutex
+	searchErrs []string
 }
 
 func (c *AIClient) Retrieve(ctx context.Context, query string, maxResults int, providers []string) ([]map[string]any, error) {
 	return c.SearchInternet(ctx, query, maxResults, "web", providers)
+}
+
+func (c *AIClient) SearchErrors() []string {
+	c.errorsMu.RLock()
+	defer c.errorsMu.RUnlock()
+	return append([]string(nil), c.searchErrs...)
 }
 
 func (c *AIClient) Answer(ctx context.Context, query string, docs []crawler.ScrapeResult) (research.Answer, error) {
@@ -112,6 +121,9 @@ func (c *AIClient) SearchInternet(ctx context.Context, query string, maxResults 
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return nil, err
 	}
+	c.errorsMu.Lock()
+	c.searchErrs = append([]string(nil), res.Errors...)
+	c.errorsMu.Unlock()
 	if len(res.Results) == 0 && len(res.Errors) > 0 {
 		return nil, fmt.Errorf("all search providers failed: %s", strings.Join(res.Errors, "; "))
 	}

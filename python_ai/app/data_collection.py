@@ -84,7 +84,19 @@ def request_with_retries(
             if response.status_code not in {408, 425, 429} and response.status_code < 500:
                 response.raise_for_status()
                 return response
-            response.raise_for_status()
+            if attempt == attempts - 1:
+                response.raise_for_status()
+                return response
+            retry_after = float(response.headers.get("retry-after", 0) or 0)
+            time.sleep(min(retry_after or 0.25 * (2**attempt), 2.0))
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in {408, 425, 429} and exc.response.status_code < 500:
+                raise
+            last_error = exc
+            if attempt == attempts - 1:
+                break
+            retry_after = float(exc.response.headers.get("retry-after", 0) or 0)
+            time.sleep(min(retry_after or 0.25 * (2**attempt), 2.0))
         except (httpx.HTTPError, httpx.TimeoutException) as exc:
             last_error = exc
             if attempt == attempts - 1:

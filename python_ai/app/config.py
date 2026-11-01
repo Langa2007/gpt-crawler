@@ -49,6 +49,10 @@ class Settings(BaseModel):
     search_providers: str = os.getenv("SEARCH_PROVIDERS", "duckduckgo,wikipedia")
     searxng_url: str = os.getenv("SEARXNG_URL", "")
     brave_search_api_key: str = os.getenv("BRAVE_SEARCH_API_KEY", "")
+    wikipedia_user_agent: str = os.getenv(
+        "WIKIPEDIA_USER_AGENT",
+        "ScrapperBot/1.0 (https://github.com/Langa2007/scrapper; contact=fidellanga67@gmail.com)",
+    )
     search_timeout_sec: float = float(os.getenv("SEARCH_TIMEOUT_SEC", "12"))
     coingecko_api_key: str = os.getenv("COINGECKO_API_KEY", "")
     coingecko_timeout_sec: float = float(os.getenv("COINGECKO_TIMEOUT_SEC", "10"))

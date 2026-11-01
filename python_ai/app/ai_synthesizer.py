@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional
 from python_ai.app.config import settings
 from python_ai.app.providers.registry import registry
@@ -106,6 +107,16 @@ class AISynthesizer:
         documents: List[Dict[str, Any]],
         sources: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        direct_answer = self._date_question_answer(query, documents)
+        if direct_answer:
+            return {
+                "answer": direct_answer,
+                "sources": sources,
+                "provider_used": "heuristic",
+                "model_used": "extractor",
+                "confidence": "medium",
+            }
+
         summary_lines = [f"### Findings for: '{query}'\n"]
 
         for idx, doc in enumerate(documents[:5], 1):
@@ -121,6 +132,50 @@ class AISynthesizer:
             "model_used": "extractor",
             "confidence": "medium",
         }
+
+    @staticmethod
+    def _date_question_answer(query: str, documents: List[Dict[str, Any]]) -> str:
+        if not re.search(r"\b(when|date)\b", query, re.IGNORECASE):
+            return ""
+
+        query_words = {
+            AISynthesizer._normalize_query_word(word)
+            for word in re.findall(r"[A-Za-z]{4,}", query)
+            if word.lower() not in {"when", "what", "date", "does", "happen"}
+        }
+        month = (
+            r"(?:January|February|March|April|May|June|July|August|September|"
+            r"October|November|December)"
+        )
+        date_pattern = re.compile(
+            rf"\b(?:{month}\s+\d{{1,2}}|\d{{1,2}}\s+{month})(?:,?\s+\d{{4}})?\b",
+            re.IGNORECASE,
+        )
+        candidates: List[tuple[int, str, str]] = []
+        for document in documents:
+            title = str(document.get("title", ""))
+            text = str(document.get("text") or document.get("snippet") or "")
+            haystack = f"{title} {text}"
+            overlap = len(query_words & {
+                AISynthesizer._normalize_query_word(word)
+                for word in re.findall(r"[A-Za-z]{4,}", haystack)
+            })
+            for sentence in re.split(r"(?<=[.!?])\s+", text):
+                match = date_pattern.search(sentence)
+                if match:
+                    candidates.append((overlap, match.group(0), sentence.strip()))
+        if not candidates:
+            return ""
+        _, date, sentence = max(candidates, key=lambda item: item[0])
+        return f"The date is **{date}**. {sentence}"
+
+    @staticmethod
+    def _normalize_query_word(word: str) -> str:
+        normalized = word.lower()
+        return {
+            "kenyan": "kenya",
+            "jamaican": "jamaica",
+        }.get(normalized, normalized)
 
 
 ai_synthesizer = AISynthesizer()

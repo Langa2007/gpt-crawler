@@ -1,4 +1,5 @@
 import logging
+from html import unescape
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -116,7 +117,7 @@ class SearchEngine:
             return []
         with httpx.Client(
             timeout=settings.search_timeout_sec,
-            headers={"User-Agent": settings.user_agent},
+            headers={"User-Agent": settings.wikipedia_user_agent},
         ) as client:
             response = request_with_retries(
                 client,
@@ -124,9 +125,14 @@ class SearchEngine:
                 "https://en.wikipedia.org/w/api.php",
                 params={
                     "action": "query",
-                    "list": "search",
-                    "srsearch": query,
-                    "srlimit": min(max_results, 20),
+                    "generator": "search",
+                    "gsrnamespace": "0",
+                    "gsrsearch": query,
+                    "gsrlimit": min(max_results, 20),
+                    "prop": "extracts|info",
+                    "exintro": "1",
+                    "explaintext": "1",
+                    "inprop": "url",
                     "format": "json",
                     "utf8": "1",
                 },
@@ -135,14 +141,14 @@ class SearchEngine:
             payload = response.json()
 
         results: List[Dict[str, Any]] = []
-        for item in payload.get("query", {}).get("search", [])[:max_results]:
+        for item in list(payload.get("query", {}).get("pages", {}).values())[:max_results]:
             page_id = item.get("pageid")
             if not page_id:
                 continue
             results.append({
                 "title": item.get("title", ""),
-                "url": f"https://en.wikipedia.org/?curid={page_id}",
-                "snippet": item.get("snippet", "").replace("<span class=\"searchmatch\">", "").replace("</span>", ""),
+                "url": item.get("fullurl", f"https://en.wikipedia.org/?curid={page_id}"),
+                "snippet": unescape(item.get("extract", "")),
                 "source": "wikipedia",
                 "provider": "wikipedia",
             })

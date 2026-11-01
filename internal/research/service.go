@@ -13,6 +13,10 @@ type Retriever interface {
 	Retrieve(ctx context.Context, query string, limit int, providers []string) ([]map[string]any, error)
 }
 
+type RetrievalDiagnostics interface {
+	SearchErrors() []string
+}
+
 type Scraper interface {
 	ScrapeBatch(ctx context.Context, urls []string, concurrency int) []crawler.ScrapeResult
 }
@@ -56,7 +60,7 @@ func (s *Service) Research(ctx context.Context, query string, limit int, provide
 		return Answer{}, fmt.Errorf("retrieve research sources: %w", err)
 	}
 	if len(results) == 0 {
-		return Answer{Text: "No search results found for the given query.", Confidence: "none"}, nil
+		return Answer{Text: "No search results found for the given query.", Confidence: "none", Errors: retrievalErrors(s.retriever)}, nil
 	}
 
 	urls := make([]string, 0, len(results))
@@ -95,7 +99,20 @@ func (s *Service) Research(ctx context.Context, query string, limit int, provide
 	if len(documents) == 0 {
 		return Answer{Text: "No relevant web pages could be collected for this query.", Confidence: "low"}, nil
 	}
-	return s.answerer.Answer(ctx, query, documents)
+	answer, err := s.answerer.Answer(ctx, query, documents)
+	if err != nil {
+		return Answer{}, err
+	}
+	answer.Errors = retrievalErrors(s.retriever)
+	return answer, nil
+}
+
+func retrievalErrors(retriever Retriever) []string {
+	diagnostics, ok := retriever.(RetrievalDiagnostics)
+	if !ok {
+		return nil
+	}
+	return diagnostics.SearchErrors()
 }
 
 func stringValue(value any) string {

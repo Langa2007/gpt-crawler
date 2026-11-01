@@ -3,3 +3,5 @@ __pycache__/
 data/
 SDK-PACKAGING-ROADMAP.md
 PHASEs.md
+.env
+.env.example

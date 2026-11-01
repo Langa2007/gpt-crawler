@@ -61,6 +61,18 @@ class TestDataCollection(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(client.request.call_count, 2)
 
+    def test_request_does_not_retry_non_transient_http_errors(self):
+        client = Mock()
+        response = httpx.Response(
+            403,
+            request=httpx.Request("GET", "https://example.test"),
+            text="blocked",
+        )
+        client.request.return_value = response
+        with self.assertRaises(httpx.HTTPStatusError):
+            request_with_retries(client, "GET", "https://example.test", attempts=3)
+        self.assertEqual(client.request.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
